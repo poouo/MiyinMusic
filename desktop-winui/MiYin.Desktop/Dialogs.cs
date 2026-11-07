@@ -121,14 +121,17 @@ public static class Dialogs
 
     public static async Task LoginAsync()
     {
-        if (Root is null) return;
-        // 带 Header 的输入框不要再固定 38px 高度：Header 会占掉空间，输入区域会被压成一条线。
+        var switchToRegister = await ShowLoginDialogAsync();
+        if (switchToRegister) await RegisterAsync();
+    }
+
+    private static async Task<bool> ShowLoginDialogAsync()
+    {
+        if (Root is null) return false;
+
+        // 登录和注册使用两个独立的 ContentDialog，不再用一个 ToggleSwitch 混在一起。
         var username = new TextBox { Header = "用户名", PlaceholderText = "请输入用户名" };
         var password = new PasswordBox { Header = "密码", PlaceholderText = "请输入密码" };
-        var nickname = new TextBox { Header = "昵称（可选）", Visibility = Visibility.Collapsed };
-        var registerSwitch = new ToggleSwitch { Header = "注册新账号", IsOn = false };
-        var allowRegister = AuthService.Instance.ServerConfig?.AllowRegister ?? true;
-        registerSwitch.Visibility = allowRegister ? Visibility.Visible : Visibility.Collapsed;
         var error = new TextBlock
         {
             Foreground = (Brush)Application.Current.Resources["PinkBrush"],
@@ -136,29 +139,45 @@ public static class Dialogs
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed,
         };
-        var panel = new StackPanel { Spacing = 10, Width = 340 };
+        var switchLink = new HyperlinkButton
+        {
+            Content = "没有账号？立即注册",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, -2, 0, 0),
+        };
+        var allowRegister = AuthService.Instance.ServerConfig?.AllowRegister ?? true;
+        switchLink.Visibility = allowRegister ? Visibility.Visible : Visibility.Collapsed;
+
+        var panel = new StackPanel { Spacing = 12, Width = 340 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "登录后可同步收藏、歌单和播放记录。",
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+            TextWrapping = TextWrapping.Wrap,
+        });
         panel.Children.Add(username);
         panel.Children.Add(password);
-        panel.Children.Add(nickname);
-        panel.Children.Add(registerSwitch);
         panel.Children.Add(error);
+        panel.Children.Add(switchLink);
 
         var dialog = new ContentDialog
         {
-            Title = "登录",
+            Title = "登录觅音",
             PrimaryButtonText = "登录",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             Content = panel,
             XamlRoot = Root,
         };
+
         var busy = false;
-        registerSwitch.Toggled += (_, _) =>
+        var switchToRegister = false;
+        switchLink.Click += (_, _) =>
         {
-            var register = registerSwitch.IsOn;
-            nickname.Visibility = register ? Visibility.Visible : Visibility.Collapsed;
-            dialog.Title = register ? "注册觅音账号" : "登录";
-            dialog.PrimaryButtonText = register ? "注册" : "登录";
+            switchToRegister = true;
+            dialog.Hide();
         };
 
         dialog.PrimaryButtonClick += async (_, args) =>
@@ -176,16 +195,9 @@ public static class Dialogs
                     error.Visibility = Visibility.Visible;
                     return;
                 }
-                if (registerSwitch.IsOn)
-                {
-                    await AuthService.Instance.RegisterAsync(name, password.Password, nickname.Text.Trim());
-                }
-                else
-                {
-                    await AuthService.Instance.LoginAsync(name, password.Password);
-                }
+                await AuthService.Instance.LoginAsync(name, password.Password);
                 dialog.Hide();
-                Notify.Show(registerSwitch.IsOn ? "注册成功，欢迎使用觅音" : "登录成功");
+                Notify.Show("登录成功，欢迎回来");
             }
             catch (Exception ex)
             {
@@ -199,6 +211,108 @@ public static class Dialogs
         };
 
         await dialog.ShowAsync();
+        return switchToRegister;
+    }
+
+    public static async Task RegisterAsync()
+    {
+        if (Root is null) return;
+        if (AuthService.Instance.ServerConfig is { AllowRegister: false })
+        {
+            Notify.Show("当前服务器未开放注册", true);
+            return;
+        }
+
+        var username = new TextBox { Header = "用户名", PlaceholderText = "3-24 位字母、数字或下划线" };
+        var nickname = new TextBox { Header = "昵称（可选）", PlaceholderText = "展示用的名字" };
+        var password = new PasswordBox { Header = "密码", PlaceholderText = "至少 6 位" };
+        var confirm = new PasswordBox { Header = "确认密码", PlaceholderText = "再次输入密码" };
+        var error = new TextBlock
+        {
+            Foreground = (Brush)Application.Current.Resources["PinkBrush"],
+            FontSize = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed,
+        };
+        var switchLink = new HyperlinkButton
+        {
+            Content = "已有账号？去登录",
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, -2, 0, 0),
+        };
+
+        var panel = new StackPanel { Spacing = 12, Width = 340 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "注册后收藏、歌单和播放记录会同步到账号。",
+            FontSize = 12,
+            Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(username);
+        panel.Children.Add(nickname);
+        panel.Children.Add(password);
+        panel.Children.Add(confirm);
+        panel.Children.Add(error);
+        panel.Children.Add(switchLink);
+
+        var dialog = new ContentDialog
+        {
+            Title = "注册觅音账号",
+            PrimaryButtonText = "注册并登录",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = panel,
+            XamlRoot = Root,
+        };
+
+        var busy = false;
+        var switchToLogin = false;
+        switchLink.Click += (_, _) =>
+        {
+            switchToLogin = true;
+            dialog.Hide();
+        };
+
+        dialog.PrimaryButtonClick += async (_, args) =>
+        {
+            args.Cancel = true;
+            if (busy) return;
+            busy = true;
+            error.Visibility = Visibility.Collapsed;
+            try
+            {
+                var name = username.Text.Trim();
+                if (name.Length == 0 || password.Password.Length < 6)
+                {
+                    error.Text = "用户名不能为空，密码至少 6 位";
+                    error.Visibility = Visibility.Visible;
+                    return;
+                }
+                if (password.Password != confirm.Password)
+                {
+                    error.Text = "两次输入的密码不一致";
+                    error.Visibility = Visibility.Visible;
+                    return;
+                }
+                await AuthService.Instance.RegisterAsync(name, password.Password, nickname.Text.Trim());
+                dialog.Hide();
+                Notify.Show("注册成功，欢迎使用觅音");
+            }
+            catch (Exception ex)
+            {
+                error.Text = ex.Message;
+                error.Visibility = Visibility.Visible;
+            }
+            finally
+            {
+                busy = false;
+            }
+        };
+
+        await dialog.ShowAsync();
+        if (switchToLogin) await LoginAsync();
     }
 
     public static async Task<string?> PromptAsync(string title, string placeholder, string initial, string primary = "确定")

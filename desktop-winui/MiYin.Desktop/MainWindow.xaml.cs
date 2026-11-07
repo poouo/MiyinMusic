@@ -10,6 +10,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
+using Windows.Foundation;
 using Windows.Graphics;
 
 namespace MiYin.Desktop;
@@ -51,7 +53,11 @@ public sealed partial class MainWindow : Window
         SidebarPlaylists.ItemsSource = LibraryService.Instance.Playlists;
         QueueList.ItemsSource = Player.Queue;
         LyricsList.ItemsSource = Player.Lyrics;
-        Player.Lyrics.CollectionChanged += (_, _) => UpdateLyricsEmptyState();
+        Player.Lyrics.CollectionChanged += (_, _) =>
+        {
+            UpdateLyricsEmptyState();
+            UpdateLyricSelection();
+        };
 
         Player.PropertyChanged += Player_PropertyChanged;
         Player.Queue.CollectionChanged += (_, _) => UpdateQueueState();
@@ -558,33 +564,83 @@ public sealed partial class MainWindow : Window
     private void UpdateLyricSelection()
     {
         var index = Player.ActiveLyricIndex;
-        if (index < 0 || index >= Player.Lyrics.Count) return;
-        if (LyricsList.SelectedIndex != index)
+        for (var i = 0; i < Player.Lyrics.Count; i++)
         {
-            LyricsList.SelectedIndex = index;
-            if (NowPlayingOverlay.Visibility == Visibility.Visible)
+            Player.Lyrics[i].IsActive = i == index;
+        }
+        if (index < 0 || index >= Player.Lyrics.Count || NowPlayingOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try
             {
-                DispatcherQueue.TryEnqueue(() =>
-                {
-                    try
-                    {
-                        LyricsList.ScrollIntoView(Player.Lyrics[index], ScrollIntoViewAlignment.Default);
-                    }
-                    catch
-                    {
-                        /* ignore */
-                    }
-                });
+                LyricsList.ScrollIntoView(Player.Lyrics[index], ScrollIntoViewAlignment.Default);
+                DispatcherQueue.TryEnqueue(() => CenterActiveLyric(index));
             }
+            catch
+            {
+                /* ignore */
+            }
+        });
+    }
+
+    private void CenterActiveLyric(int index)
+    {
+        try
+        {
+            if (LyricsList.ContainerFromIndex(index) is not ListViewItem item) return;
+            var viewer = FindDescendant<ScrollViewer>(LyricsList);
+            if (viewer is null) return;
+            var point = item.TransformToVisual(LyricsList).TransformPoint(new Point(0, 0));
+            var target = viewer.VerticalOffset + point.Y - (viewer.ViewportHeight - item.ActualHeight) / 2;
+            viewer.ChangeView(null, Math.Max(0, target), null, false);
+        }
+        catch
+        {
+            /* 歌词滚动失败不影响播放 */
         }
     }
 
-    private void FullPlayer_Click(object sender, RoutedEventArgs e)
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
-        NowPlayingOverlay.Visibility = Visibility.Visible;
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var found = FindDescendant<T>(child);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private void OpenNowPlaying()
+    {
         QueueOverlay.Visibility = Visibility.Collapsed;
+        NowPlayingOverlay.Visibility = Visibility.Visible;
+        NowPlayingOverlay.Opacity = 0;
+
+        var fade = new DoubleAnimation
+        {
+            To = 1,
+            Duration = new Duration(TimeSpan.FromMilliseconds(220)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        Storyboard.SetTarget(fade, NowPlayingOverlay);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        var story = new Storyboard();
+        story.Children.Add(fade);
+        story.Begin();
+
         UpdateLyricSelection();
     }
+
+    private void PlayerInfo_Tapped(object sender, TappedRoutedEventArgs e) => OpenNowPlaying();
+
+    private void FullPlayer_Click(object sender, RoutedEventArgs e) => OpenNowPlaying();
 
     private void CloseNowPlaying_Click(object sender, RoutedEventArgs e) => NowPlayingOverlay.Visibility = Visibility.Collapsed;
 

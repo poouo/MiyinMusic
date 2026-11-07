@@ -3,6 +3,8 @@ using MiYin.Desktop.Models;
 using MiYin.Desktop.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 
 namespace MiYin.Desktop.Views;
@@ -31,6 +33,17 @@ public sealed partial class HomePage : Page
         LoadCached();
         Loaded += (_, _) => _ = LoadAsync();
         Unloaded += (_, _) => LibraryService.Instance.Changed -= Library_Changed;
+
+        // ListView 内部会处理 PointerEntered，用 handledEventsToo 再挂一次，确保悬停箭头能出现。
+        foreach (var host in new FrameworkElement[] { PlaylistRailHost, ChartRailHost, NewSongRailHost, SingerRailHost })
+        {
+            host.AddHandler(PointerEnteredEvent, new PointerEventHandler(RailHost_PointerEntered), true);
+            host.AddHandler(PointerMovedEvent, new PointerEventHandler(RailHost_PointerMoved), true);
+            host.AddHandler(PointerExitedEvent, new PointerEventHandler(RailHost_PointerExited), true);
+            host.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(RailHost_PointerWheelChanged), true);
+        }
+        AddHandler(PointerMovedEvent, new PointerEventHandler(Page_PointerMoved), true);
+        AddHandler(PointerExitedEvent, new PointerEventHandler(Page_PointerExited), true);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -141,6 +154,107 @@ public sealed partial class HomePage : Page
         var songs = LibraryService.Instance.History.Take(6).Select(entry => entry.Song).ToList();
         RecentSection.Visibility = songs.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         RecentSongs.SetSongs(songs);
+    }
+
+    private void RailHost_PointerEntered(object sender, PointerRoutedEventArgs e) => ShowRailArrows(sender);
+
+    private void RailHost_PointerMoved(object sender, PointerRoutedEventArgs e) => ShowRailArrows(sender);
+
+    private static void ShowRailArrows(object sender)
+    {
+        if (sender is not Grid host) return;
+        foreach (var child in host.Children)
+        {
+            if (child is Button button)
+            {
+                button.Visibility = Visibility.Visible;
+                button.Opacity = 1;
+            }
+        }
+    }
+
+    private void RailHost_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid host) HideRailArrows(host);
+    }
+
+    private void PlaylistPrev_Click(object sender, RoutedEventArgs e) => ScrollRail(PlaylistRail, -1);
+    private void PlaylistNext_Click(object sender, RoutedEventArgs e) => ScrollRail(PlaylistRail, 1);
+    private void ChartPrev_Click(object sender, RoutedEventArgs e) => ScrollRail(ChartRail, -1);
+    private void ChartNext_Click(object sender, RoutedEventArgs e) => ScrollRail(ChartRail, 1);
+    private void NewSongPrev_Click(object sender, RoutedEventArgs e) => ScrollRail(NewSongRail, -1);
+    private void NewSongNext_Click(object sender, RoutedEventArgs e) => ScrollRail(NewSongRail, 1);
+    private void SingerPrev_Click(object sender, RoutedEventArgs e) => ScrollRail(SingerRail, -1);
+    private void SingerNext_Click(object sender, RoutedEventArgs e) => ScrollRail(SingerRail, 1);
+
+    private void Page_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        SetArrowsForHost(PlaylistRailHost, e);
+        SetArrowsForHost(ChartRailHost, e);
+        SetArrowsForHost(NewSongRailHost, e);
+        SetArrowsForHost(SingerRailHost, e);
+    }
+
+    private void Page_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        HideRailArrows(PlaylistRailHost);
+        HideRailArrows(ChartRailHost);
+        HideRailArrows(NewSongRailHost);
+        HideRailArrows(SingerRailHost);
+    }
+
+    private static void SetArrowsForHost(Grid host, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(host).Position;
+        var inside = point.X >= 0 && point.Y >= 0 && point.X <= host.ActualWidth && point.Y <= host.ActualHeight;
+        if (inside) ShowRailArrows(host);
+        else HideRailArrows(host);
+    }
+
+    private static void HideRailArrows(Grid host)
+    {
+        foreach (var child in host.Children)
+        {
+            if (child is Button button) button.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void RailHost_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(this).Properties.MouseWheelDelta;
+        if (delta == 0) return;
+
+        // 横向卡片区域不接管滚轮：滚轮始终交给整页纵向滚动。
+        e.Handled = true;
+        PageScroll.ChangeView(null, PageScroll.VerticalOffset - delta, null, true);
+    }
+
+    private async void ScrollRail(ListView rail, int direction)
+    {
+        var viewer = FindDescendant<ScrollViewer>(rail);
+        if (viewer is null) return;
+
+        // 平时禁用横向滚动，避免滚轮被列表吃掉；点箭头时才临时开启，滚动后关闭。
+        viewer.HorizontalScrollMode = ScrollMode.Enabled;
+        viewer.UpdateLayout();
+        var step = Math.Max(320, viewer.ViewportWidth * 0.75);
+        var target = Math.Clamp(viewer.HorizontalOffset + direction * step, 0, Math.Max(0, viewer.ScrollableWidth));
+        viewer.ChangeView(target, null, null, false);
+        await Task.Delay(280);
+        viewer.HorizontalScrollMode = ScrollMode.Disabled;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) return match;
+            var found = FindDescendant<T>(child);
+            if (found is not null) return found;
+        }
+        return null;
     }
 
     private void PlaylistRail_ItemClick(object sender, ItemClickEventArgs e)

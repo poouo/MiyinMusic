@@ -1368,7 +1368,23 @@ textarea.input {
   font-size: 13.5px;
   font-weight: 650;
   color: var(--text-dim);
-  transition: background 0.18s, color 0.18s;
+  transition: background 0.18s, color 0.18s, transform 0.18s var(--ease);
+}
+.auth-tabs button:active {
+  transform: scale(0.97);
+}
+.auth-form {
+  animation: authFormIn 0.24s var(--ease);
+}
+@keyframes authFormIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .auth-tabs button.is-active {
   background: var(--bg-elev-2);

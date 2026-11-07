@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using MiYin.Desktop.Services;
 
@@ -217,11 +218,27 @@ public sealed class LyricResult
     [JsonPropertyName("lxlyric")] public string? LxLyric { get; set; }
 }
 
-public sealed class LyricLine
+public sealed class LyricLine : INotifyPropertyChanged
 {
+    private bool _isActive;
+
     public TimeSpan Time { get; set; }
     public string Text { get; set; } = "";
     public string Translation { get; set; } = "";
+
+    [JsonIgnore]
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value) return;
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActive)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public sealed class UrlResult

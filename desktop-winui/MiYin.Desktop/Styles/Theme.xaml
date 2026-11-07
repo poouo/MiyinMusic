@@ -33,6 +33,9 @@
     <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
     <conv:BoolToActiveBrushConverter x:Key="BoolToActiveBrush" />
     <conv:BoolToOpacityConverter x:Key="BoolToOpacity" />
+    <conv:LyricBrushConverter x:Key="LyricBrush" />
+    <conv:LyricFontSizeConverter x:Key="LyricFontSize" />
+    <conv:LyricWeightConverter x:Key="LyricWeight" />
 
     <!-- 文本样式 -->
     <Style x:Key="PageTitleStyle" TargetType="TextBlock">

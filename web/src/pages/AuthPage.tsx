@@ -83,7 +83,7 @@ export function AuthPage() {
           </div>
         )}
 
-        <form className="stack gap-14" onSubmit={submit}>
+        <form key={mode} className="stack gap-14 auth-form" onSubmit={submit}>
           <div className="field">
             <label htmlFor="username">用户名</label>
             <input

@@ -6,7 +6,7 @@
     Background="Transparent">
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Padding="28,16,28,40" Spacing="26">
                 <Grid>
                     <StackPanel Spacing="4">
@@ -46,15 +46,29 @@
                         <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
                                 Content="全部" Click="OpenSquare_Click" />
                     </Grid>
-                    <ListView x:Name="PlaylistRail" Height="220" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemTemplate="{StaticResource PlaylistCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
-                              ItemClick="PlaylistRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
-                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListView.ItemsPanel>
-                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ListView.ItemsPanel>
-                    </ListView>
+                    <Grid x:Name="PlaylistRailHost">
+                        <ListView x:Name="PlaylistRail" Height="220" SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemTemplate="{StaticResource PlaylistCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                                  ItemClick="PlaylistRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                                  ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                        </ListView>
+                        <Button x:Name="PlaylistPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="PlaylistPrev_Click"
+                                ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        </Button>
+                        <Button x:Name="PlaylistNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="PlaylistNext_Click"
+                                ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        </Button>
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel x:Name="ChartSection" Spacing="10">
@@ -63,15 +77,29 @@
                         <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
                                 Content="全部" Click="OpenCharts_Click" />
                     </Grid>
-                    <ListView x:Name="ChartRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemTemplate="{StaticResource ChartCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
-                              ItemClick="ChartRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
-                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListView.ItemsPanel>
-                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ListView.ItemsPanel>
-                    </ListView>
+                    <Grid x:Name="ChartRailHost">
+                        <ListView x:Name="ChartRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemTemplate="{StaticResource ChartCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                                  ItemClick="ChartRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                                  ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                        </ListView>
+                        <Button x:Name="ChartPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="ChartPrev_Click"
+                                ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        </Button>
+                        <Button x:Name="ChartNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="ChartNext_Click"
+                                ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        </Button>
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel x:Name="NewSongSection" Spacing="10">
@@ -80,28 +108,56 @@
                         <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
                                 Content="播放全部" Click="PlayNewSongs_Click" />
                     </Grid>
-                    <ListView x:Name="NewSongRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemTemplate="{StaticResource SongCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
-                              ItemClick="NewSongRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
-                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListView.ItemsPanel>
-                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ListView.ItemsPanel>
-                    </ListView>
+                    <Grid x:Name="NewSongRailHost">
+                        <ListView x:Name="NewSongRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemTemplate="{StaticResource SongCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                                  ItemClick="NewSongRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                                  ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                        </ListView>
+                        <Button x:Name="NewSongPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="NewSongPrev_Click"
+                                ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        </Button>
+                        <Button x:Name="NewSongNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="NewSongNext_Click"
+                                ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        </Button>
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel x:Name="SingerSection" Spacing="10">
                     <TextBlock Text="热门歌手" Style="{StaticResource SectionTitleStyle}" />
-                    <ListView x:Name="SingerRail" Height="166" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemTemplate="{StaticResource SingerCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
-                              ItemClick="SingerRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
-                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListView.ItemsPanel>
-                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                        </ListView.ItemsPanel>
-                    </ListView>
+                    <Grid x:Name="SingerRailHost">
+                        <ListView x:Name="SingerRail" Height="166" SelectionMode="None" IsItemClickEnabled="True"
+                                  ItemTemplate="{StaticResource SingerCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                                  ItemClick="SingerRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                                  ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                        </ListView>
+                        <Button x:Name="SingerPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="SingerPrev_Click"
+                                ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        </Button>
+                        <Button x:Name="SingerNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
+                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="SingerNext_Click"
+                                ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        </Button>
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel x:Name="RecentSection" Spacing="10" Visibility="Collapsed">
@@ -118,3 +174,9 @@
         </ScrollViewer>
     </Grid>
 </Page>
+
+
+
+
+
+

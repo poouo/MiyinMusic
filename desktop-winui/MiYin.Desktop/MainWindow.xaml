@@ -162,8 +162,11 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Rectangle Width="54" Height="54" RadiusX="10" RadiusY="10" VerticalAlignment="Center"
-                               Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="11,0,8,0" Spacing="2">
+                               Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}"
+                               Tapped="PlayerInfo_Tapped" ToolTipService.ToolTip="展开歌词"
+                               AutomationProperties.Name="展开歌词" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="11,0,8,0" Spacing="2"
+                                Tapped="PlayerInfo_Tapped" ToolTipService.ToolTip="展开歌词">
                         <TextBlock Text="{Binding Player.Title}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding Player.Singer}" FontSize="11.5" Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
@@ -218,7 +221,8 @@
 
                 <!-- 右侧操作 -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button x:Name="LyricsButton" Style="{StaticResource GhostButtonStyle}" Height="28" Padding="10,0" Click="FullPlayer_Click" ToolTipService.ToolTip="歌词 / 全屏播放">
+                    <Button x:Name="LyricsButton" AutomationProperties.AutomationId="LyricsButton" AutomationProperties.Name="歌词"
+                            Style="{StaticResource GhostButtonStyle}" Height="28" Padding="10,0" Click="FullPlayer_Click" ToolTipService.ToolTip="歌词 / 全屏播放">
                         <TextBlock Text="词" FontSize="12" FontWeight="SemiBold" />
                     </Button>
                     <Button x:Name="QualityButton" Style="{StaticResource GhostButtonStyle}" Height="28" Padding="10,0" Click="Quality_Click" ToolTipService.ToolTip="选择音质">
@@ -239,50 +243,80 @@
         <!-- ================= 全屏播放 ================= -->
         <Grid x:Name="NowPlayingOverlay" Grid.RowSpan="3" Visibility="Collapsed" Background="#FF07090F">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Rectangle Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}" Grid.RowSpan="2" Opacity="0.18" Stretch="UniformToFill" />
 
-            <Button x:Name="CloseNowPlayingButton" Style="{StaticResource FlatIconButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,54,14,0"
-                    Click="CloseNowPlaying_Click" ToolTipService.ToolTip="收起">
-                <FontIcon Glyph="&#xE711;" FontSize="17" Foreground="{StaticResource TextBrush}" />
-            </Button>
+            <Rectangle Grid.RowSpan="3" Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}" Opacity="0.22" Stretch="UniformToFill" />
+            <Rectangle Grid.RowSpan="3">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#D907090F" Offset="0" />
+                        <GradientStop Color="#B807090F" Offset="0.55" />
+                        <GradientStop Color="#FF07090F" Offset="1" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
 
-            <Grid Grid.Row="0" Padding="52,30,52,12" ColumnSpacing="54">
+            <Grid Grid.Row="0" Padding="38,28,28,0">
+                <TextBlock Text="正在播放" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextFaintBrush}" CharacterSpacing="160" VerticalAlignment="Center" />
+                <Button x:Name="CloseNowPlayingButton" Style="{StaticResource FlatIconButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Click="CloseNowPlaying_Click" ToolTipService.ToolTip="收起">
+                    <FontIcon Glyph="&#xE711;" FontSize="17" Foreground="{StaticResource TextBrush}" />
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="1" Padding="64,18,64,8" ColumnSpacing="64">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.05*" />
-                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="360" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel VerticalAlignment="Center" Spacing="14">
-                    <Rectangle Width="300" Height="300" RadiusX="22" RadiusY="22" HorizontalAlignment="Left"
-                               Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}" />
-                    <StackPanel Spacing="5">
-                        <TextBlock Text="{Binding Player.Title}" FontSize="27" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding Player.Singer}" FontSize="14" Foreground="{StaticResource TextDimBrush}" />
+                <StackPanel VerticalAlignment="Center" Spacing="22">
+                    <Grid Width="340" Height="340">
+                        <Ellipse Width="326" Height="326" Fill="#FF101521" Opacity="0.8" />
+                        <Border CornerRadius="26" BorderBrush="#33FFFFFF" BorderThickness="1">
+                            <Rectangle RadiusX="26" RadiusY="26" Fill="{Binding Player.CoverUrl, Converter={StaticResource CoverBrush}}" />
+                        </Border>
+                    </Grid>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding Player.Title}" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Player.Singer}" FontSize="14" Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                            <Border Background="{StaticResource CardBrush}" CornerRadius="5" Padding="7,2">
+                            <Border Background="{StaticResource CardBrush}" CornerRadius="6" Padding="8,3">
                                 <TextBlock Text="{Binding Player.AlbumName}" FontSize="11" Foreground="{StaticResource TextFaintBrush}" />
                             </Border>
-                            <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="5" Padding="7,2">
+                            <Border Background="{StaticResource AccentSoftBrush}" CornerRadius="6" Padding="8,3">
                                 <TextBlock Text="{Binding Player.QualityLabel}" FontSize="11" Foreground="{StaticResource AccentBrush}" />
                             </Border>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
-                <Grid Grid.Column="1">
-                    <ListView x:Name="LyricsList" Background="Transparent" SelectionMode="Single"
+                <Grid Grid.Column="1" MaxWidth="620" HorizontalAlignment="Stretch">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,2">
+                        <TextBlock Text="歌词" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                        <TextBlock Text="点击任意一句可跳转" FontSize="11" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ListView Grid.Row="1" x:Name="LyricsList" Background="Transparent" SelectionMode="None"
                               IsItemClickEnabled="True" ItemClick="Lyric_ItemClick" ItemContainerStyle="{StaticResource LyricItemStyle}"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto" Padding="0,20,0,20">
+                              ScrollViewer.VerticalScrollBarVisibility="Hidden" Padding="0,70,0,110">
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Padding="2,7" Spacing="2">
-                                    <TextBlock Text="{Binding Text}" FontSize="16" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding Translation}" FontSize="12" Foreground="{StaticResource TextFaintBrush}" TextWrapping="Wrap"
-                                               Visibility="{Binding Translation, Converter={StaticResource StringToVisibility}}" />
-                                </StackPanel>
+                                <Grid Padding="2,7" Opacity="{Binding IsActive, Converter={StaticResource BoolToOpacity}}">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="{Binding Text}" FontSize="{Binding IsActive, Converter={StaticResource LyricFontSize}}"
+                                                   FontWeight="{Binding IsActive, Converter={StaticResource LyricWeight}}"
+                                                   Foreground="{Binding IsActive, Converter={StaticResource LyricBrush}}" TextWrapping="Wrap" LineHeight="25" />
+                                        <TextBlock Text="{Binding Translation}" FontSize="12" Foreground="{StaticResource TextFaintBrush}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Translation, Converter={StaticResource StringToVisibility}}" />
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
@@ -291,7 +325,7 @@
                 </Grid>
             </Grid>
 
-            <StackPanel Grid.Row="1" Padding="52,4,52,26" Spacing="8">
+            <StackPanel Grid.Row="2" Padding="64,8,64,28" Spacing="10">
                 <Grid ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="46" />
