@@ -18,7 +18,7 @@ public static class Dialogs
         {
             Text = "选择要加入的歌单：" + song.Name,
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+            Foreground = ThemeService.Brush("TextDimBrush"),
             TextWrapping = TextWrapping.Wrap,
         };
         panel.Children.Add(hint);
@@ -30,6 +30,7 @@ public static class Dialogs
             DefaultButton = ContentDialogButton.Close,
             Content = panel,
             XamlRoot = Root,
+            RequestedTheme = ThemeService.Current,
         };
 
         var playlists = LibraryService.Instance.Playlists.ToList();
@@ -39,7 +40,7 @@ public static class Dialogs
             {
                 Text = "还没有歌单，先在下面创建一个吧。",
                 FontSize = 12,
-                Foreground = (Brush)Application.Current.Resources["TextFaintBrush"],
+                Foreground = ThemeService.Brush("TextFaintBrush"),
             });
         }
         else
@@ -55,7 +56,7 @@ public static class Dialogs
                 {
                     Text = playlist.Name,
                     FontSize = 13,
-                    Foreground = (Brush)Application.Current.Resources["TextBrush"],
+                    Foreground = ThemeService.Brush("TextBrush"),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 });
@@ -63,7 +64,7 @@ public static class Dialogs
                 {
                     Text = playlist.CountText,
                     FontSize = 11,
-                    Foreground = (Brush)Application.Current.Resources["TextFaintBrush"],
+                    Foreground = ThemeService.Brush("TextFaintBrush"),
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 Grid.SetColumn(count, 1);
@@ -134,7 +135,7 @@ public static class Dialogs
         var password = new PasswordBox { Header = "密码", PlaceholderText = "请输入密码" };
         var error = new TextBlock
         {
-            Foreground = (Brush)Application.Current.Resources["PinkBrush"],
+            Foreground = ThemeService.Brush("PinkBrush"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed,
@@ -154,7 +155,7 @@ public static class Dialogs
         {
             Text = "登录后可同步收藏、歌单和播放记录。",
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+            Foreground = ThemeService.Brush("TextDimBrush"),
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(username);
@@ -170,6 +171,7 @@ public static class Dialogs
             DefaultButton = ContentDialogButton.Primary,
             Content = panel,
             XamlRoot = Root,
+            RequestedTheme = ThemeService.Current,
         };
 
         var busy = false;
@@ -229,7 +231,7 @@ public static class Dialogs
         var confirm = new PasswordBox { Header = "确认密码", PlaceholderText = "再次输入密码" };
         var error = new TextBlock
         {
-            Foreground = (Brush)Application.Current.Resources["PinkBrush"],
+            Foreground = ThemeService.Brush("PinkBrush"),
             FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed,
@@ -247,7 +249,7 @@ public static class Dialogs
         {
             Text = "注册后收藏、歌单和播放记录会同步到账号。",
             FontSize = 12,
-            Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+            Foreground = ThemeService.Brush("TextDimBrush"),
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(username);
@@ -265,6 +267,7 @@ public static class Dialogs
             DefaultButton = ContentDialogButton.Primary,
             Content = panel,
             XamlRoot = Root,
+            RequestedTheme = ThemeService.Current,
         };
 
         var busy = false;
@@ -329,6 +332,7 @@ public static class Dialogs
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = Root,
+            RequestedTheme = ThemeService.Current,
         };
         box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
         var result = await dialog.ShowAsync();
@@ -347,13 +351,16 @@ public static class Dialogs
                 Text = message,
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)Application.Current.Resources["TextDimBrush"],
+                Foreground = ThemeService.Brush("TextDimBrush"),
             },
             PrimaryButtonText = primary,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Root,
+            RequestedTheme = ThemeService.Current,
         };
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 }
+
+

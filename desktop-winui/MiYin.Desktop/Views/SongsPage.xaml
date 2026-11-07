@@ -19,11 +19,11 @@
             </Grid.ColumnDefinitions>
             <Rectangle x:Name="CoverRect" Width="170" Height="170" RadiusX="18" RadiusY="18" HorizontalAlignment="Left" VerticalAlignment="Center" />
             <StackPanel Grid.Column="1" Margin="24,0,12,0" VerticalAlignment="Center" Spacing="7">
-                <TextBlock x:Name="KindText" Text="歌单" FontSize="11" Foreground="{StaticResource TextFaintBrush}" CharacterSpacing="40" />
-                <TextBlock x:Name="TitleText" Text="" FontSize="27" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                <TextBlock x:Name="KindText" Text="歌单" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" CharacterSpacing="40" />
+                <TextBlock x:Name="TitleText" Text="" FontSize="27" FontWeight="Bold" Foreground="{ThemeResource TextBrush}"
                            TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" />
-                <TextBlock x:Name="MetaText" Text="" FontSize="12" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" />
-                <TextBlock x:Name="DescText" Text="" FontSize="12" Foreground="{StaticResource TextFaintBrush}" TextWrapping="Wrap"
+                <TextBlock x:Name="MetaText" Text="" FontSize="12" Foreground="{ThemeResource TextDimBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="DescText" Text="" FontSize="12" Foreground="{ThemeResource TextFaintBrush}" TextWrapping="Wrap"
                            MaxLines="2" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
                     <Button x:Name="PlayAllButton" Style="{StaticResource PrimaryButtonStyle}" Click="PlayAll_Click" IsEnabled="False">
@@ -34,12 +34,12 @@
                     </Button>
                 </StackPanel>
             </StackPanel>
-            <ProgressRing x:Name="LoadingRing" Grid.Column="2" IsActive="True" Width="26" Height="26" Foreground="{StaticResource AccentBrush}" />
+            <ProgressRing x:Name="LoadingRing" Grid.Column="2" IsActive="True" Width="26" Height="26" Foreground="{ThemeResource AccentBrush}" />
         </Grid>
 
         <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" Grid.Row="1" Padding="28,0,28,30" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
-                <TextBlock x:Name="ErrorText" Foreground="{StaticResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
+                <TextBlock x:Name="ErrorText" Foreground="{ThemeResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
                 <controls:SongListView x:Name="Songs" />
                 <Button x:Name="LoadMoreButton" Style="{StaticResource GhostButtonStyle}" Content="加载更多歌曲"
                         HorizontalAlignment="Center" Visibility="Collapsed" Click="LoadMore_Click" />
@@ -47,3 +47,4 @@
         </ScrollViewer>
     </Grid>
 </Page>
+

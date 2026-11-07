@@ -21,10 +21,10 @@
                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
             </Grid>
             <StackPanel Grid.Column="1" Margin="22,0,0,0" VerticalAlignment="Center" Spacing="6">
-                <TextBlock x:Name="KindText" Text="歌单" FontSize="11" Foreground="{StaticResource TextFaintBrush}" CharacterSpacing="40" />
-                <TextBlock x:Name="TitleText" Text="" FontSize="27" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                <TextBlock x:Name="KindText" Text="歌单" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" CharacterSpacing="40" />
+                <TextBlock x:Name="TitleText" Text="" FontSize="27" FontWeight="Bold" Foreground="{ThemeResource TextBrush}"
                            TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" />
-                <TextBlock x:Name="SubtitleText" Text="" FontSize="12" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="SubtitleText" Text="" FontSize="12" Foreground="{ThemeResource TextDimBrush}" TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
                     <Button x:Name="PlayAllButton" Style="{StaticResource PrimaryButtonStyle}" Click="PlayAll_Click" IsEnabled="False">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -48,3 +48,4 @@
         </ScrollViewer>
     </Grid>
 </Page>
+

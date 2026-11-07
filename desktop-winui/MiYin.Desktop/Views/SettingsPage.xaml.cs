@@ -60,6 +60,9 @@ public sealed partial class SettingsPage : Page
     private void Refresh()
     {
         _ready = false;
+        var theme = ConfigService.Current.Theme;
+        ThemeBox.SelectedIndex = theme == "light" ? 1 : theme == "dark" ? 2 : 0;
+
         var user = AuthService.Instance.User;
         AccountNameText.Text = user is null ? "未登录" : user.Nickname;
         AccountRoleText.Text = user is null ? "登录后可同步收藏、歌单与播放记录" : $"{user.Username} · {user.RoleText}";
@@ -87,6 +90,15 @@ public sealed partial class SettingsPage : Page
                          $"配置目录：{AppInfo.DataDirectory}\n" +
                          $"缓存目录：{CacheService.Instance.DirectoryPath}";
         _ready = true;
+    }
+
+    private void ThemeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || ThemeBox.SelectedItem is not ComboBoxItem item || item.Tag is not string theme) return;
+        ConfigService.Current.Theme = theme;
+        ConfigService.Current.ThemeChosen = true;
+        ConfigService.Save();
+        MainWindow.Instance.ApplyTheme(theme);
     }
 
     private void UpdateCacheUsage()

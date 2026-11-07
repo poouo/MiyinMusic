@@ -13,7 +13,7 @@
             <Grid>
                 <TextBlock Text="排行榜" Style="{StaticResource PageTitleStyle}" />
                 <ProgressRing x:Name="LoadingRing" IsActive="True" Width="24" Height="24" HorizontalAlignment="Right"
-                              Foreground="{StaticResource AccentBrush}" />
+                              Foreground="{ThemeResource AccentBrush}" />
             </Grid>
             <TextBlock x:Name="SubtitleText" Text="网易云、QQ 音乐、酷我、酷狗的实时榜单" Style="{StaticResource MutedTextStyle}" />
         </StackPanel>
@@ -24,3 +24,4 @@
                   ItemClick="ChartGrid_ItemClick" Background="Transparent" />
     </Grid>
 </Page>
+

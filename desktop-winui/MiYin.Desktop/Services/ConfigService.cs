@@ -17,7 +17,8 @@ public sealed class AppSettings
     public string ApiBase { get; set; } = "https://music.poouo.com";
     public string Token { get; set; } = "";
     public User? User { get; set; }
-    public string Theme { get; set; } = "dark";
+    public string Theme { get; set; } = "system";
+    public bool ThemeChosen { get; set; }
     public List<string> Quality { get; set; } = new() { "flac", "320k", "128k" };
     public double Volume { get; set; } = 0.75;
     public string CacheDir { get; set; } = "";
@@ -64,6 +65,14 @@ public static class ConfigService
 
         // 正式版固定使用公网域名，客户端不提供服务器配置入口。
         // 开发调试时（Debug 构建）允许用环境变量指向本地服务。
+        if (!Current.ThemeChosen && (string.IsNullOrWhiteSpace(Current.Theme) || Current.Theme == "dark"))
+        {
+            Current.Theme = "system";
+        }
+        Current.Theme = Current.Theme.Trim().ToLowerInvariant() is "light" or "dark" or "system"
+            ? Current.Theme.Trim().ToLowerInvariant()
+            : "system";
+
         Current.ApiBase = "https://music.poouo.com";
 #if DEBUG
         var envBase = Environment.GetEnvironmentVariable("MIYIN_API_BASE");

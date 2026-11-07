@@ -25,7 +25,7 @@
                 <ItemsControl x:Name="DownloadsItems">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="14,12" Margin="0,0,0,8">
+                            <Border Background="{ThemeResource CardBrush}" CornerRadius="12" Padding="14,12" Margin="0,0,0,8">
                                 <Grid ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="46" />
@@ -35,15 +35,15 @@
                                     <Rectangle Width="46" Height="46" RadiusX="8" RadiusY="8" Fill="{Binding CoverUrl, Converter={StaticResource CoverBrush}}" />
                                     <StackPanel Grid.Column="1" Spacing="5" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                                                        TextTrimming="CharacterEllipsis" MaxWidth="380" />
-                                            <TextBlock Text="{Binding Quality}" FontSize="10" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Quality}" FontSize="10" Foreground="{ThemeResource TextFaintBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Singer}" FontSize="11" Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
-                                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" Foreground="{StaticResource AccentBrush}"
+                                        <TextBlock Text="{Binding Singer}" FontSize="11" Foreground="{ThemeResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
+                                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" Foreground="{ThemeResource AccentBrush}"
                                                      Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
-                                        <TextBlock Text="{Binding Status}" FontSize="10.5" Foreground="{StaticResource TextFaintBrush}" />
-                                        <TextBlock Text="{Binding Error}" FontSize="10.5" Foreground="{StaticResource PinkBrush}"
+                                        <TextBlock Text="{Binding Status}" FontSize="10.5" Foreground="{ThemeResource TextFaintBrush}" />
+                                        <TextBlock Text="{Binding Error}" FontSize="10.5" Foreground="{ThemeResource PinkBrush}"
                                                    Visibility="{Binding IsFailed, Converter={StaticResource BoolToVisibility}}" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -61,3 +61,4 @@
         </ScrollViewer>
     </Grid>
 </Page>
+

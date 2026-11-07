@@ -11,7 +11,7 @@
         <Style x:Key="RowActionButtonStyle" TargetType="Button" BasedOn="{StaticResource FlatIconButtonStyle}">
             <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="26" />
-            <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
         </Style>
     </UserControl.Resources>
 
@@ -31,11 +31,11 @@
                 <ColumnDefinition Width="48" />
                 <ColumnDefinition Width="116" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="#" FontSize="11" Foreground="{StaticResource TextFaintBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="2" Text="歌曲" FontSize="11" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="3" Text="专辑" FontSize="11" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="4" Text="音质" FontSize="11" Foreground="{StaticResource TextFaintBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="5" Text="时长" FontSize="11" Foreground="{StaticResource TextFaintBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+            <TextBlock Text="#" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="歌曲" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="专辑" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="4" Text="音质" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="5" Text="时长" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
         </Grid>
 
         <ItemsControl x:Name="Items" Grid.Row="1">
@@ -54,7 +54,7 @@
                             <ColumnDefinition Width="116" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="{x:Bind IndexText}" FontSize="12" Foreground="{StaticResource TextFaintBrush}"
+                        <TextBlock Text="{x:Bind IndexText}" FontSize="12" Foreground="{ThemeResource TextFaintBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
 
                         <Grid Grid.Column="1" Width="40" Height="40">
@@ -67,16 +67,16 @@
 
                         <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2" Margin="0,0,10,0">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="{x:Bind Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                <TextBlock Text="{x:Bind Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                                            TextTrimming="CharacterEllipsis" MaxWidth="320" />
-                                <Border Background="{StaticResource CardBrush}" CornerRadius="4" Padding="5,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind PlatformText}" FontSize="9.5" Foreground="{StaticResource TextFaintBrush}" />
+                                <Border Background="{ThemeResource CardBrush}" CornerRadius="4" Padding="5,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind PlatformText}" FontSize="9.5" Foreground="{ThemeResource TextFaintBrush}" />
                                 </Border>
                             </StackPanel>
-                            <TextBlock Text="{x:Bind Singer}" FontSize="11.5" Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind Singer}" FontSize="11.5" Foreground="{ThemeResource TextDimBrush}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
 
-                        <TextBlock Grid.Column="3" Text="{x:Bind AlbumName}" FontSize="11.5" Foreground="{StaticResource TextDimBrush}"
+                        <TextBlock Grid.Column="3" Text="{x:Bind AlbumName}" FontSize="11.5" Foreground="{ThemeResource TextDimBrush}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
 
                         <Border Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="4" Padding="5,2"
@@ -86,7 +86,7 @@
                                        Foreground="{x:Bind QualityText, Converter={StaticResource QualityForeground}}" />
                         </Border>
 
-                        <TextBlock Grid.Column="5" Text="{x:Bind DurationText}" FontSize="11.5" Foreground="{StaticResource TextFaintBrush}"
+                        <TextBlock Grid.Column="5" Text="{x:Bind DurationText}" FontSize="11.5" Foreground="{ThemeResource TextFaintBrush}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center" />
 
                         <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="1" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -120,3 +120,4 @@
         </ItemsControl>
     </Grid>
 </UserControl>
+

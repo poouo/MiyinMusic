@@ -131,7 +131,7 @@ public sealed partial class SongsPage : Page
         {
             var converter = Application.Current.Resources["PlatformBrush"] as IValueConverter;
             CoverRect.Fill = converter is null
-                ? (Brush)Application.Current.Resources["CardHoverBrush"]
+                ? ThemeService.Brush("CardHoverBrush")
                 : (Brush)converter.Convert(platform, typeof(Brush), null, "zh-CN");
         }
     }
@@ -161,3 +161,4 @@ public sealed partial class SongsPage : Page
         }
     }
 }
+

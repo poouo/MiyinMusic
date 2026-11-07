@@ -4,25 +4,56 @@
     xmlns:models="using:MiYin.Desktop.Models"
     xmlns:conv="using:MiYin.Desktop.Converters">
 
-    <!-- 颜色 -->
-    <SolidColorBrush x:Key="AppBgBrush" Color="#0A0C12" />
-    <SolidColorBrush x:Key="SidebarBrush" Color="#0C0F17" />
-    <SolidColorBrush x:Key="PlayerBrush" Color="#0E111A" />
-    <SolidColorBrush x:Key="CardBrush" Color="#141824" />
-    <SolidColorBrush x:Key="CardHoverBrush" Color="#1B2030" />
-    <SolidColorBrush x:Key="LineBrush" Color="#232A3A" />
-    <SolidColorBrush x:Key="TextBrush" Color="#EEF2F8" />
-    <SolidColorBrush x:Key="TextDimBrush" Color="#9AA6BC" />
-    <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7690" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#2FD07F" />
-    <SolidColorBrush x:Key="AccentSoftBrush" Color="#162A22" />
-    <SolidColorBrush x:Key="Accent2Brush" Color="#57B6FF" />
-    <SolidColorBrush x:Key="PinkBrush" Color="#FF5D8F" />
-    <SolidColorBrush x:Key="GoldBrush" Color="#F5C45C" />
-    <SolidColorBrush x:Key="RowHoverBrush" Color="#151A26" />
-    <SolidColorBrush x:Key="BadgeBrush" Color="#99000000" />
-    <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="BlackBrush" Color="#060A08" />
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="AppBgBrush" Color="#0A0C12" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#0C0F17" />
+            <SolidColorBrush x:Key="PlayerBrush" Color="#0E111A" />
+            <SolidColorBrush x:Key="CardBrush" Color="#141824" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#1B2030" />
+            <SolidColorBrush x:Key="LineBrush" Color="#232A3A" />
+            <SolidColorBrush x:Key="TextBrush" Color="#EEF2F8" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#9AA6BC" />
+            <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7690" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#2FD07F" />
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#162A22" />
+            <SolidColorBrush x:Key="Accent2Brush" Color="#57B6FF" />
+            <SolidColorBrush x:Key="PinkBrush" Color="#FF5D8F" />
+            <SolidColorBrush x:Key="GoldBrush" Color="#F5C45C" />
+            <SolidColorBrush x:Key="RowHoverBrush" Color="#151A26" />
+            <SolidColorBrush x:Key="BadgeBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="BlackBrush" Color="#060A08" />
+            <Color x:Key="HoverColor">#1E2432</Color>
+            <Color x:Key="PressedColor">#252C3E</Color>
+            <Color x:Key="NavHoverColor">#151A26</Color>
+            <Color x:Key="PrimaryHoverColor">#4FE39A</Color>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="AppBgBrush" Color="#F5F7FC" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#EDF1F8" />
+            <SolidColorBrush x:Key="PlayerBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#F1F4FA" />
+            <SolidColorBrush x:Key="LineBrush" Color="#DCE3EF" />
+            <SolidColorBrush x:Key="TextBrush" Color="#182033" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#5C687C" />
+            <SolidColorBrush x:Key="TextFaintBrush" Color="#8A95A8" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#0D9F63" />
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#E0F5E9" />
+            <SolidColorBrush x:Key="Accent2Brush" Color="#2E7FE8" />
+            <SolidColorBrush x:Key="PinkBrush" Color="#D9476C" />
+            <SolidColorBrush x:Key="GoldBrush" Color="#B07A12" />
+            <SolidColorBrush x:Key="RowHoverBrush" Color="#EDF2FA" />
+            <SolidColorBrush x:Key="BadgeBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="BlackBrush" Color="#101827" />
+            <Color x:Key="HoverColor">#E8EEF7</Color>
+            <Color x:Key="PressedColor">#DCE5F2</Color>
+            <Color x:Key="NavHoverColor">#E8EEF7</Color>
+            <Color x:Key="PrimaryHoverColor">#23B578</Color>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
 
     <!-- 转换器 -->
     <conv:CoverBrushConverter x:Key="CoverBrush" />
@@ -41,26 +72,26 @@
     <Style x:Key="PageTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="26" />
         <Setter Property="FontWeight" Value="Bold" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextBrush}" />
         <Setter Property="CharacterSpacing" Value="-10" />
     </Style>
     <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextBrush}" />
     </Style>
     <Style x:Key="MutedTextStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
     </Style>
     <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="Foreground" Value="{StaticResource TextFaintBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFaintBrush}" />
     </Style>
     <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Foreground" Value="{StaticResource TextFaintBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFaintBrush}" />
         <Setter Property="CharacterSpacing" Value="60" />
         <Setter Property="Margin" Value="12,16,0,6" />
     </Style>
@@ -68,7 +99,7 @@
     <!-- 按钮模板 -->
     <Style x:Key="FlatIconButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinWidth" Value="0" />
@@ -89,7 +120,7 @@
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                             <DiscreteObjectKeyFrame KeyTime="0">
                                                 <DiscreteObjectKeyFrame.Value>
-                                                    <SolidColorBrush Color="#1E2432" />
+                                                    <SolidColorBrush Color="{ThemeResource HoverColor}" />
                                                 </DiscreteObjectKeyFrame.Value>
                                             </DiscreteObjectKeyFrame>
                                         </ObjectAnimationUsingKeyFrames>
@@ -100,7 +131,7 @@
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                             <DiscreteObjectKeyFrame KeyTime="0">
                                                 <DiscreteObjectKeyFrame.Value>
-                                                    <SolidColorBrush Color="#252C3E" />
+                                                    <SolidColorBrush Color="{ThemeResource PressedColor}" />
                                                 </DiscreteObjectKeyFrame.Value>
                                             </DiscreteObjectKeyFrame>
                                         </ObjectAnimationUsingKeyFrames>
@@ -128,7 +159,7 @@
     </Style>
 
     <Style x:Key="PlayerIconButtonStyle" TargetType="Button" BasedOn="{StaticResource FlatIconButtonStyle}">
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
     </Style>
 
     <Style x:Key="LyricItemStyle" TargetType="ListViewItem">
@@ -139,8 +170,8 @@
     </Style>
 
     <Style x:Key="SettingsCardStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource CardBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="Background" Value="{ThemeResource CardBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="14" />
         <Setter Property="Padding" Value="20" />
@@ -148,7 +179,7 @@
 
     <Style x:Key="NavButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="12,0" />
         <Setter Property="Height" Value="40" />
@@ -167,7 +198,7 @@
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                             <DiscreteObjectKeyFrame KeyTime="0">
                                                 <DiscreteObjectKeyFrame.Value>
-                                                    <SolidColorBrush Color="#151A26" />
+                                                    <SolidColorBrush Color="{ThemeResource NavHoverColor}" />
                                                 </DiscreteObjectKeyFrame.Value>
                                             </DiscreteObjectKeyFrame>
                                         </ObjectAnimationUsingKeyFrames>
@@ -186,7 +217,7 @@
     </Style>
 
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
         <Setter Property="Foreground" Value="#06130C" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="16,0" />
@@ -207,7 +238,7 @@
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                             <DiscreteObjectKeyFrame KeyTime="0">
                                                 <DiscreteObjectKeyFrame.Value>
-                                                    <SolidColorBrush Color="#4FE39A" />
+                                                    <SolidColorBrush Color="{ThemeResource PrimaryHoverColor}" />
                                                 </DiscreteObjectKeyFrame.Value>
                                             </DiscreteObjectKeyFrame>
                                         </ObjectAnimationUsingKeyFrames>
@@ -231,8 +262,8 @@
 
     <Style x:Key="GhostButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="14,0" />
         <Setter Property="Height" Value="32" />
@@ -253,7 +284,7 @@
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Root" Storyboard.TargetProperty="Background">
                                             <DiscreteObjectKeyFrame KeyTime="0">
                                                 <DiscreteObjectKeyFrame.Value>
-                                                    <SolidColorBrush Color="#151A26" />
+                                                    <SolidColorBrush Color="{ThemeResource NavHoverColor}" />
                                                 </DiscreteObjectKeyFrame.Value>
                                             </DiscreteObjectKeyFrame>
                                         </ObjectAnimationUsingKeyFrames>
@@ -279,7 +310,7 @@
         <Setter Property="Width" Value="42" />
         <Setter Property="Height" Value="42" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
         <Setter Property="Foreground" Value="#06130C" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Template">
@@ -372,19 +403,19 @@
             </Grid.RowDefinitions>
             <Grid Grid.Row="0">
                 <Rectangle RadiusX="12" RadiusY="12" Fill="{Binding CoverUrl, Converter={StaticResource CoverBrush}}" />
-                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" Background="{StaticResource BadgeBrush}" CornerRadius="6" Padding="6,2">
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" Background="{ThemeResource BadgeBrush}" CornerRadius="6" Padding="6,2">
                     <TextBlock Text="{Binding PlatformText}" FontSize="10" Foreground="White" />
                 </Border>
-                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Background="{StaticResource BadgeBrush}" CornerRadius="6" Padding="6,2">
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Background="{ThemeResource BadgeBrush}" CornerRadius="6" Padding="6,2">
                     <StackPanel Orientation="Horizontal" Spacing="3">
                         <FontIcon Glyph="&#xE768;" FontSize="8" Foreground="White" />
                         <TextBlock Text="{Binding PlayCountText}" FontSize="10" Foreground="White" />
                     </StackPanel>
                 </Border>
             </Grid>
-            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                        TextTrimming="CharacterEllipsis" VerticalAlignment="Bottom" />
-            <TextBlock Grid.Row="2" Text="{Binding MetaText}" FontSize="11" Foreground="{StaticResource TextFaintBrush}"
+            <TextBlock Grid.Row="2" Text="{Binding MetaText}" FontSize="11" Foreground="{ThemeResource TextFaintBrush}"
                        TextTrimming="CharacterEllipsis" />
         </Grid>
     </DataTemplate>
@@ -400,14 +431,14 @@
                 <Grid>
                     <FontIcon Glyph="&#xE9D2;" FontSize="48" Foreground="White" Opacity="0.92"
                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" Background="{StaticResource BadgeBrush}" CornerRadius="6" Padding="6,2">
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8" Background="{ThemeResource BadgeBrush}" CornerRadius="6" Padding="6,2">
                         <TextBlock Text="{Binding PlatformText}" FontSize="10" Foreground="White" />
                     </Border>
                 </Grid>
             </Border>
-            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                        TextTrimming="CharacterEllipsis" VerticalAlignment="Bottom" />
-            <TextBlock Grid.Row="2" Text="每日更新" FontSize="11" Foreground="{StaticResource TextFaintBrush}" />
+            <TextBlock Grid.Row="2" Text="每日更新" FontSize="11" Foreground="{ThemeResource TextFaintBrush}" />
         </Grid>
     </DataTemplate>
 
@@ -420,13 +451,13 @@
             </Grid.RowDefinitions>
             <Grid Grid.Row="0">
                 <Rectangle RadiusX="11" RadiusY="11" Fill="{Binding CoverUrl, Converter={StaticResource CoverBrush}}" />
-                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7" Background="{StaticResource BadgeBrush}" CornerRadius="6" Padding="6,2">
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7" Background="{ThemeResource BadgeBrush}" CornerRadius="6" Padding="6,2">
                     <TextBlock Text="{Binding PlatformText}" FontSize="10" Foreground="White" />
                 </Border>
             </Grid>
-            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                        TextTrimming="CharacterEllipsis" VerticalAlignment="Bottom" />
-            <TextBlock Grid.Row="2" Text="{Binding SingerText}" FontSize="11" Foreground="{StaticResource TextFaintBrush}"
+            <TextBlock Grid.Row="2" Text="{Binding SingerText}" FontSize="11" Foreground="{ThemeResource TextFaintBrush}"
                        TextTrimming="CharacterEllipsis" />
         </Grid>
     </DataTemplate>
@@ -439,11 +470,13 @@
                 <RowDefinition Height="15" />
             </Grid.RowDefinitions>
             <Ellipse Width="100" Height="100" Fill="{Binding PicUrl, Converter={StaticResource CoverBrush}}" HorizontalAlignment="Center" />
-            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}"
                        HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="100" />
-            <TextBlock Grid.Row="2" Text="{Binding FollowersText}" FontSize="10.5" Foreground="{StaticResource TextFaintBrush}"
+            <TextBlock Grid.Row="2" Text="{Binding FollowersText}" FontSize="10.5" Foreground="{ThemeResource TextFaintBrush}"
                        HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="100" />
         </Grid>
     </DataTemplate>
 
 </ResourceDictionary>
+
+

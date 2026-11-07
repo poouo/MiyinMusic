@@ -38,6 +38,8 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Instance = this;
         Root.DataContext = this;
+        ApplyTheme(ConfigService.Current.Theme);
+        Root.ActualThemeChanged += (_, _) => SyncActualTheme();
         ConfigureWindow();
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WindowIcon.Apply(hwnd);
@@ -180,10 +182,7 @@ public sealed partial class MainWindow : Window
         var titleBar = AppWindow.TitleBar;
         titleBar.ButtonBackgroundColor = Colors.Transparent;
         titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        titleBar.ButtonForegroundColor = ColorHelper.FromArgb(255, 238, 242, 248);
-        titleBar.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 140, 150, 168);
-        titleBar.ButtonHoverBackgroundColor = ColorHelper.FromArgb(255, 30, 36, 50);
-        titleBar.ButtonHoverForegroundColor = Colors.White;
+        UpdateTitleBarTheme();
 
         try
         {
@@ -196,13 +195,50 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>先展示主界面（有缓存就先展示缓存），连接过程完全放到后台。</summary>
+    public void ApplyTheme(string? theme)
+    {
+        Root.RequestedTheme = (theme ?? "").Trim().ToLowerInvariant() switch
+        {
+            "light" => ElementTheme.Light,
+            "dark" => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        };
+        SyncActualTheme();
+        DispatcherQueue.TryEnqueue(SyncActualTheme);
+    }
+
+    private void SyncActualTheme()
+    {
+        ThemeService.Set(Root.ActualTheme);
+        UpdateTitleBarTheme();
+        RefreshUserCard();
+        UpdateHeartIcon();
+    }
+
+    private void UpdateTitleBarTheme()
+    {
+        var titleBar = AppWindow.TitleBar;
+        var light = Root.ActualTheme == ElementTheme.Light;
+        titleBar.ButtonForegroundColor = light ? ColorHelper.FromArgb(255, 24, 32, 51) : ColorHelper.FromArgb(255, 238, 242, 248);
+        titleBar.ButtonInactiveForegroundColor = light ? ColorHelper.FromArgb(255, 120, 132, 150) : ColorHelper.FromArgb(255, 140, 150, 168);
+        titleBar.ButtonHoverBackgroundColor = light ? ColorHelper.FromArgb(255, 232, 238, 247) : ColorHelper.FromArgb(255, 30, 36, 50);
+        titleBar.ButtonHoverForegroundColor = light ? ColorHelper.FromArgb(255, 24, 32, 51) : Colors.White;
+    }
+
     public void StartShell()
     {
         NavigateTo(typeof(HomePage), null, "home");
         // 有保存的登录 token 时，先在左下角显示“登录中…”，等后台恢复完成再替换成账号。
         _authPending = !string.IsNullOrEmpty(ConfigService.Current.Token);
         RefreshUserCard();
+        _ = HideBootSplashAsync();
         _ = InitializeAsync();
+    }
+
+    private async Task HideBootSplashAsync()
+    {
+        await Task.Delay(180);
+        BootSplash.Visibility = Visibility.Collapsed;
     }
 
     public async Task InitializeAsync()
@@ -282,9 +318,9 @@ public sealed partial class MainWindow : Window
 
     private void SetNavSelected(string key)
     {
-        var accent = (Brush)Application.Current.Resources["AccentBrush"];
-        var accentSoft = (Brush)Application.Current.Resources["AccentSoftBrush"];
-        var dim = (Brush)Application.Current.Resources["TextDimBrush"];
+        var accent = ThemeService.Brush("AccentBrush");
+        var accentSoft = ThemeService.Brush("AccentSoftBrush");
+        var dim = ThemeService.Brush("TextDimBrush");
         foreach (var panel in new[] { MainNav, LibraryNav })
         {
             foreach (var child in panel.Children)
@@ -363,7 +399,7 @@ public sealed partial class MainWindow : Window
             {
                 UserInitial.Text = "…";
                 UserName.Text = "登录中…";
-                UserRole.Text = "正在恢复账号";
+                UserRole.Text = "";
             }
             else
             {
@@ -479,7 +515,7 @@ public sealed partial class MainWindow : Window
         if (Player.Current is null)
         {
             PlayerHeartIcon.Glyph = "\uEB51";
-            PlayerHeartIcon.Foreground = (Brush)Application.Current.Resources["TextDimBrush"];
+            PlayerHeartIcon.Foreground = ThemeService.Brush("TextDimBrush");
             return;
         }
         var favorite = LibraryService.Instance.IsFavorite(Player.Current);
@@ -606,6 +642,7 @@ public sealed partial class MainWindow : Window
     private void UpdateLyricsEmptyState()
     {
         NoLyricsText.Visibility = Player.Lyrics.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (Player.Lyrics.Count == 0) PlayerLyricLine.Text = "";
     }
 
     private void UpdateLyricSelection()
@@ -615,6 +652,9 @@ public sealed partial class MainWindow : Window
         {
             Player.Lyrics[i].IsActive = i == index;
         }
+        PlayerLyricLine.Text = index >= 0 && index < Player.Lyrics.Count
+            ? "♪ " + Player.Lyrics[index].Text
+            : "";
         if (index < 0 || index >= Player.Lyrics.Count || NowPlayingOverlay.Visibility != Visibility.Visible)
         {
             return;
@@ -795,3 +835,4 @@ public sealed partial class MainWindow : Window
         _ = LocalMediaServer.Instance.StopAsync();
     }
 }
+

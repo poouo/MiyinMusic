@@ -14,7 +14,7 @@
                         <TextBlock Text="聚合网易云与 QQ 音乐的歌单、榜单、新歌和歌手" Style="{StaticResource MutedTextStyle}" />
                     </StackPanel>
                     <ProgressRing x:Name="LoadingRing" IsActive="True" Width="26" Height="26" HorizontalAlignment="Right"
-                                  Foreground="{StaticResource AccentBrush}" />
+                                  Foreground="{ThemeResource AccentBrush}" />
                 </Grid>
 
                 <Border Height="150" CornerRadius="18" Padding="28,0">
@@ -31,8 +31,10 @@
                             <TextBlock Text="每日更新歌单 · 新歌速递 · 热门歌手" FontSize="12" Foreground="#CCE8FFF0" />
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                                 <Button Style="{StaticResource PrimaryButtonStyle}" Content="歌单广场" Height="30" Click="OpenSquare_Click" />
-                                <Button Style="{StaticResource GhostButtonStyle}" Content="排行榜" Height="30" Click="OpenCharts_Click" />
-                                <Button Style="{StaticResource GhostButtonStyle}" Content="播放新歌" Height="30" Click="PlayNewSongs_Click" />
+                                <Button Style="{StaticResource GhostButtonStyle}" Content="排行榜" Height="30" Click="OpenCharts_Click"
+                                        Foreground="White" Background="#22FFFFFF" BorderBrush="#44FFFFFF" />
+                                <Button Style="{StaticResource GhostButtonStyle}" Content="播放新歌" Height="30" Click="PlayNewSongs_Click"
+                                        Foreground="White" Background="#22FFFFFF" BorderBrush="#44FFFFFF" />
                             </StackPanel>
                         </StackPanel>
                         <FontIcon Glyph="&#xE8D6;" FontSize="120" Foreground="White" Opacity="0.10"
@@ -57,13 +59,13 @@
                             </ListView.ItemsPanel>
                         </ListView>
                         <Button x:Name="PlaylistPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
                                 VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="PlaylistPrev_Click"
                                 ToolTipService.ToolTip="向左">
                             <FontIcon Glyph="&#xE76B;" FontSize="15" />
                         </Button>
                         <Button x:Name="PlaylistNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="PlaylistNext_Click"
                                 ToolTipService.ToolTip="向右">
                             <FontIcon Glyph="&#xE76C;" FontSize="15" />
@@ -88,13 +90,13 @@
                             </ListView.ItemsPanel>
                         </ListView>
                         <Button x:Name="ChartPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
                                 VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="ChartPrev_Click"
                                 ToolTipService.ToolTip="向左">
                             <FontIcon Glyph="&#xE76B;" FontSize="15" />
                         </Button>
                         <Button x:Name="ChartNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="ChartNext_Click"
                                 ToolTipService.ToolTip="向右">
                             <FontIcon Glyph="&#xE76C;" FontSize="15" />
@@ -119,13 +121,13 @@
                             </ListView.ItemsPanel>
                         </ListView>
                         <Button x:Name="NewSongPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
                                 VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="NewSongPrev_Click"
                                 ToolTipService.ToolTip="向左">
                             <FontIcon Glyph="&#xE76B;" FontSize="15" />
                         </Button>
                         <Button x:Name="NewSongNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="NewSongNext_Click"
                                 ToolTipService.ToolTip="向右">
                             <FontIcon Glyph="&#xE76C;" FontSize="15" />
@@ -146,13 +148,13 @@
                             </ListView.ItemsPanel>
                         </ListView>
                         <Button x:Name="SingerPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Left"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
                                 VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="SingerPrev_Click"
                                 ToolTipService.ToolTip="向左">
                             <FontIcon Glyph="&#xE76B;" FontSize="15" />
                         </Button>
                         <Button x:Name="SingerNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Right"
+                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="SingerNext_Click"
                                 ToolTipService.ToolTip="向右">
                             <FontIcon Glyph="&#xE76C;" FontSize="15" />
@@ -169,11 +171,12 @@
                     <controls:SongListView x:Name="RecentSongs" />
                 </StackPanel>
 
-                <TextBlock x:Name="ErrorText" Foreground="{StaticResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
+                <TextBlock x:Name="ErrorText" Foreground="{ThemeResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
     </Grid>
 </Page>
+
 
 
 

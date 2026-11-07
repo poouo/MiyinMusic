@@ -13,7 +13,7 @@
             <Grid>
                 <TextBlock Text="搜索" Style="{StaticResource PageTitleStyle}" />
                 <ProgressRing x:Name="LoadingRing" IsActive="False" Width="24" Height="24" HorizontalAlignment="Right"
-                              Foreground="{StaticResource AccentBrush}" />
+                              Foreground="{ThemeResource AccentBrush}" />
             </Grid>
             <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
@@ -39,3 +39,4 @@
         </ScrollViewer>
     </Grid>
 </Page>
+

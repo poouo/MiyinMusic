@@ -97,7 +97,7 @@ public sealed partial class SongListView : UserControl
 
     private void Row_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Grid grid) grid.Background = (Brush)Application.Current.Resources["RowHoverBrush"];
+        if (sender is Grid grid) grid.Background = ThemeService.Brush("RowHoverBrush");
     }
 
     private void Row_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -190,3 +190,4 @@ public sealed partial class SongListView : UserControl
         RemoveRequested?.Invoke(this, _menuRow.Song);
     }
 }
+

@@ -13,7 +13,7 @@
             <Grid>
                 <TextBlock Text="歌单广场" Style="{StaticResource PageTitleStyle}" />
                 <ProgressRing x:Name="LoadingRing" IsActive="True" Width="24" Height="24" HorizontalAlignment="Right"
-                              Foreground="{StaticResource AccentBrush}" />
+                              Foreground="{ThemeResource AccentBrush}" />
             </Grid>
             <TextBlock x:Name="SubtitleText" Text="网易云音乐与 QQ 音乐精选歌单" Style="{StaticResource MutedTextStyle}" />
         </StackPanel>
@@ -30,3 +30,4 @@
                   ItemClick="PlaylistGrid_ItemClick" Background="Transparent" />
     </Grid>
 </Page>
+
