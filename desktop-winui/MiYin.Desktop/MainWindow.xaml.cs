@@ -691,6 +691,26 @@ public sealed partial class MainWindow : Window
 
     private void CloseNowPlaying_Click(object sender, RoutedEventArgs e) => NowPlayingOverlay.Visibility = Visibility.Collapsed;
 
+    private void FullQueue_Click(object sender, RoutedEventArgs e)
+    {
+        QueueOverlay.Visibility = Visibility.Visible;
+        UpdateQueueState();
+        if (Player.Current is not null)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    QueueList.ScrollIntoView(Player.Current);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            });
+        }
+    }
+
     private void Lyric_ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is LyricLine line) Player.Seek(line.Time);
