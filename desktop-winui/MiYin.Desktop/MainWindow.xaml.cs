@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private bool _draggingVolume;
     private bool _initializing;
     private bool _retryScheduled;
+    private bool _authPending;
     private bool _exiting;
     private bool _hidingToTray;
 
@@ -198,6 +199,9 @@ public sealed partial class MainWindow : Window
     public void StartShell()
     {
         NavigateTo(typeof(HomePage), null, "home");
+        // 有保存的登录 token 时，先在左下角显示“登录中…”，等后台恢复完成再替换成账号。
+        _authPending = !string.IsNullOrEmpty(ConfigService.Current.Token);
+        RefreshUserCard();
         _ = InitializeAsync();
     }
 
@@ -213,11 +217,15 @@ public sealed partial class MainWindow : Window
             if (!ok)
             {
                 AppLog.Write("background connect failed: " + message);
+                _authPending = false;
+                RefreshUserCard();
                 ScheduleRetry();
                 return;
             }
 
             AppLog.Write("connected api=" + ConfigService.Current.ApiBase + " version=" + version);
+            _authPending = !string.IsNullOrEmpty(ConfigService.Current.Token);
+            RefreshUserCard();
             await AuthService.Instance.InitializeAsync();
             await LibraryService.Instance.ReloadAsync();
             RefreshUserCard();
@@ -233,6 +241,8 @@ public sealed partial class MainWindow : Window
         finally
         {
             _initializing = false;
+            _authPending = false;
+            RefreshUserCard();
         }
     }
 
@@ -349,9 +359,18 @@ public sealed partial class MainWindow : Window
         var user = AuthService.Instance.User;
         if (user is null)
         {
-            UserInitial.Text = "♪";
-            UserName.Text = "登录 / 注册";
-            UserRole.Text = "同步歌单与收藏";
+            if (_authPending && !string.IsNullOrEmpty(ConfigService.Current.Token))
+            {
+                UserInitial.Text = "…";
+                UserName.Text = "登录中…";
+                UserRole.Text = "正在恢复账号";
+            }
+            else
+            {
+                UserInitial.Text = "♪";
+                UserName.Text = "登录 / 注册";
+                UserRole.Text = "同步歌单与收藏";
+            }
         }
         else
         {
@@ -365,6 +384,11 @@ public sealed partial class MainWindow : Window
     {
         if (!AuthService.Instance.IsLoggedIn)
         {
+            if (_authPending)
+            {
+                Notify.Show("正在登录，请稍候…");
+                return;
+            }
             await Dialogs.LoginAsync();
             RefreshUserCard();
             return;
@@ -492,20 +516,41 @@ public sealed partial class MainWindow : Window
 
     private void ProgressSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingProgress || !_draggingProgress) return;
+        if (_updatingProgress) return;
         Player.Seek(TimeSpan.FromSeconds(e.NewValue));
     }
 
     private void FullProgressSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingProgress || !_draggingProgress) return;
+        if (_updatingProgress) return;
         Player.Seek(TimeSpan.FromSeconds(e.NewValue));
     }
 
     private void VolumeSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
     {
-        if (_updatingVolume || !_draggingVolume) return;
+        if (_updatingVolume) return;
         Player.SetVolume(e.NewValue);
+    }
+
+    private void ProgressSlider_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Slider slider) SeekFromSliderPoint(slider, e.GetPosition(slider).X);
+    }
+
+    private void FullProgressSlider_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Slider slider) SeekFromSliderPoint(slider, e.GetPosition(slider).X);
+    }
+
+    private void SeekFromSliderPoint(Slider slider, double x)
+    {
+        if (slider.ActualWidth <= 0) return;
+        var ratio = Math.Clamp(x / slider.ActualWidth, 0, 1);
+        var seconds = ratio * slider.Maximum;
+        _updatingProgress = true;
+        slider.Value = seconds;
+        _updatingProgress = false;
+        Player.Seek(TimeSpan.FromSeconds(seconds));
     }
 
     private void Player_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -552,8 +597,10 @@ public sealed partial class MainWindow : Window
 
     private void UpdateProgressMaximum(double seconds)
     {
+        _updatingProgress = true;
         ProgressSlider.Maximum = Math.Max(1, seconds);
         FullProgressSlider.Maximum = Math.Max(1, seconds);
+        _updatingProgress = false;
     }
 
     private void UpdateLyricsEmptyState()

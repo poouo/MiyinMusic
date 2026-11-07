@@ -213,7 +213,7 @@
                         <TextBlock Text="{Binding Player.PositionText}" FontSize="10.5" Foreground="{StaticResource TextFaintBrush}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center" />
                         <Slider x:Name="ProgressSlider" Grid.Column="1" Height="28" Minimum="0" Maximum="1" StepFrequency="0.01"
-                                ValueChanged="ProgressSlider_ValueChanged" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
+                                ValueChanged="ProgressSlider_ValueChanged" Tapped="ProgressSlider_Tapped" IsThumbToolTipEnabled="False" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="2" Text="{Binding Player.DurationText}" FontSize="10.5" Foreground="{StaticResource TextFaintBrush}"
                                    VerticalAlignment="Center" />
                     </Grid>
@@ -299,7 +299,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,2">
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,2" Canvas.ZIndex="3">
                         <TextBlock Text="歌词" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
                         <TextBlock Text="点击任意一句可跳转" FontSize="11" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
                     </StackPanel>
@@ -320,6 +320,15 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
+                    <Border Grid.RowSpan="2" Height="96" VerticalAlignment="Top" Canvas.ZIndex="2" IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#FF07090F" Offset="0" />
+                                <GradientStop Color="#E607090F" Offset="0.55" />
+                                <GradientStop Color="#0007090F" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
                     <TextBlock x:Name="NoLyricsText" Text="暂无歌词，安静享受音乐吧" FontSize="14" Foreground="{StaticResource TextFaintBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                 </Grid>
@@ -334,7 +343,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding Player.PositionText}" FontSize="11" Foreground="{StaticResource TextFaintBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                     <Slider x:Name="FullProgressSlider" Grid.Column="1" Minimum="0" Maximum="1" StepFrequency="0.01"
-                            ValueChanged="FullProgressSlider_ValueChanged" IsThumbToolTipEnabled="False" />
+                            ValueChanged="FullProgressSlider_ValueChanged" Tapped="FullProgressSlider_Tapped" IsThumbToolTipEnabled="False" />
                     <TextBlock Grid.Column="2" Text="{Binding Player.DurationText}" FontSize="11" Foreground="{StaticResource TextFaintBrush}" VerticalAlignment="Center" />
                 </Grid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="18">
