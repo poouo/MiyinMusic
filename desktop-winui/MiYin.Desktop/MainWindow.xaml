@@ -39,10 +39,6 @@
                             PlaceholderText="搜索歌曲、歌手、歌单" QuerySubmitted="GlobalSearch_QuerySubmitted"
                             BorderBrush="{StaticResource LineBrush}" Background="{StaticResource CardBrush}" CornerRadius="16" />
 
-            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                <Ellipse x:Name="ApiStatusDot" Width="7" Height="7" Fill="{StaticResource AccentBrush}" />
-                <TextBlock x:Name="ApiStatusText" Text="正在连接…" FontSize="11.5" Foreground="{StaticResource TextFaintBrush}" />
-            </StackPanel>
         </Grid>
 
         <!-- ================= 主体 ================= -->
@@ -370,32 +366,6 @@
                     </ListView>
                 </Grid>
             </Border>
-        </Grid>
-
-        <!-- ================= 连接失败 ================= -->
-        <Grid x:Name="ConnectionErrorOverlay" Grid.RowSpan="3" Visibility="Collapsed" Background="{StaticResource AppBgBrush}">
-            <Border Width="480" Padding="30" CornerRadius="18" Background="{StaticResource CardBrush}"
-                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Spacing="12">
-                    <Image Source="Assets/app.png" Width="46" Height="46" HorizontalAlignment="Left" />
-                    <TextBlock Text="无法连接音乐服务器" FontSize="21" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
-                    <TextBlock Text="觅音已固定连接 music.poouo.com，请检查网络后重试。"
-                               FontSize="12" Foreground="{StaticResource TextFaintBrush}" TextWrapping="Wrap" />
-                    <TextBlock x:Name="ConnectionErrorText" FontSize="11.5" Foreground="{StaticResource PinkBrush}" TextWrapping="Wrap" />
-                    <Button x:Name="RetryButton" Style="{StaticResource PrimaryButtonStyle}" Content="重试"
-                            HorizontalAlignment="Right" Click="RetryConnect_Click" />
-                </StackPanel>
-            </Border>
-        </Grid>
-
-        <!-- ================= 启动加载 ================= -->
-        <Grid x:Name="StartupOverlay" Grid.RowSpan="3" Background="{StaticResource AppBgBrush}">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18">
-                <Image Source="Assets/app.png" Width="96" Height="96" />
-                <TextBlock Text="觅音" FontSize="30" FontWeight="Bold" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" />
-                <ProgressRing IsActive="True" Width="28" Height="28" Foreground="{StaticResource AccentBrush}" />
-                <TextBlock x:Name="StartupText" Text="正在启动…" FontSize="12" Foreground="{StaticResource TextFaintBrush}" HorizontalAlignment="Center" />
-            </StackPanel>
         </Grid>
 
         <!-- ================= 提示 ================= -->

@@ -947,7 +947,8 @@ function CacheSection() {
 
   const setGb = (value: number) => {
     if (!Number.isFinite(value)) return
-    setCache({ ...cache, maxBytes: Math.max(0.25, value) * 1024 ** 3 })
+    const safe = Math.min(4096, Math.max(1, Math.round(value)))
+    setCache({ ...cache, maxBytes: safe * 1024 ** 3 })
   }
 
   const toggleQuality = (quality: Quality) => {
@@ -1021,17 +1022,18 @@ function CacheSection() {
       <div className="admin-card glass">
         <div className="admin-card__head">
           <div>
-            <div className="admin-card__title">缓存总容量</div>
+            <div className="admin-card__title">缓存总容量（自定义）</div>
             <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-              超出后按最久未播放的顺序自动清理旧文件；游客主动下载不受这个上限影响。
+              按你的存储空间自由填写，最大 4096 GB；4TB NAS 建议先设 2048 GB，给系统和其他数据留余量。
             </div>
           </div>
           <div className="row gap-8" style={{ alignItems: 'center' }}>
             <input
               className="input"
               type="number"
-              min={0.25}
-              step={0.5}
+              min={1}
+              max={4096}
+              step={1}
               value={gb}
               onChange={(event) => setGb(Number(event.target.value))}
               style={{ width: 110, height: 36 }}
@@ -1040,13 +1042,13 @@ function CacheSection() {
           </div>
         </div>
         <div className="row gap-8" style={{ flexWrap: 'wrap', marginTop: 10 }}>
-          {[2, 8, 16, 32, 64].map((size) => (
+          {[64, 128, 256, 512, 1024, 2048, 4096].map((size) => (
             <button
               key={size}
               className={'chip' + (Math.abs(gb - size) < 0.05 ? ' is-active' : '')}
               onClick={() => setGb(size)}
             >
-              {size} GB
+              {size >= 1024 ? (size / 1024) + ' TB' : size + ' GB'}
             </button>
           ))}
         </div>

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MiYin.Desktop.Models;
 using MiYin.Desktop.Services;
 using Microsoft.UI.Xaml;
@@ -13,9 +14,21 @@ public sealed partial class HomePage : Page
     private static List<Song>? _newSongs;
     private static List<SingerInfo>? _singers;
 
+    private static readonly string CacheFile = Path.Combine(AppInfo.DataDirectory, "home-cache.json");
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
+
+    private sealed class HomeCache
+    {
+        public List<PlaylistInfo>? Playlists { get; set; }
+        public List<ChartInfo>? Charts { get; set; }
+        public List<Song>? NewSongs { get; set; }
+        public List<SingerInfo>? Singers { get; set; }
+    }
+
     public HomePage()
     {
         InitializeComponent();
+        LoadCached();
         Loaded += (_, _) => _ = LoadAsync();
         Unloaded += (_, _) => LibraryService.Instance.Changed -= Library_Changed;
     }
@@ -29,39 +42,84 @@ public sealed partial class HomePage : Page
 
     private void Library_Changed(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(RefreshRecent);
 
+    public Task RefreshAsync() => LoadAsync();
+
     private async Task LoadAsync()
     {
-        LoadingRing.IsActive = true;
+        // 有缓存时先展示缓存，不显示整页的加载遮罩；网络回来后再覆盖。
+        LoadingRing.IsActive = _playlists is null;
         ErrorText.Visibility = Visibility.Collapsed;
         try
         {
-            if (_playlists is null || _charts is null || _newSongs is null || _singers is null)
-            {
-                var playlistsTask = ApiService.GetDiscoverPlaylistsAsync(12, 18);
-                var chartsTask = ApiService.GetChartsAsync();
-                var songsTask = ApiService.GetNewSongsAsync(12);
-                var singersTask = ApiService.GetSingersAsync(12);
-                await Task.WhenAll(playlistsTask, chartsTask, songsTask, singersTask);
-                _playlists = playlistsTask.Result.Playlists;
-                _charts = chartsTask.Result.Charts;
-                _newSongs = songsTask.Result.Songs;
-                _singers = singersTask.Result.Singers;
-            }
-            PlaylistRail.ItemsSource = _playlists;
-            ChartRail.ItemsSource = MixCharts(_charts);
-            NewSongRail.ItemsSource = _newSongs;
-            SingerRail.ItemsSource = _singers;
+            var playlistsTask = ApiService.GetDiscoverPlaylistsAsync(12, 18);
+            var chartsTask = ApiService.GetChartsAsync();
+            var songsTask = ApiService.GetNewSongsAsync(12);
+            var singersTask = ApiService.GetSingersAsync(12);
+            await Task.WhenAll(playlistsTask, chartsTask, songsTask, singersTask);
+
+            _playlists = playlistsTask.Result.Playlists;
+            _charts = chartsTask.Result.Charts;
+            _newSongs = songsTask.Result.Songs;
+            _singers = singersTask.Result.Singers;
+            ApplyData();
+            SaveCache();
         }
         catch (Exception ex)
         {
-            ErrorText.Text = "内容加载失败：" + ex.Message;
-            ErrorText.Visibility = Visibility.Visible;
+            // 有旧内容时静默保留，不在用户面前弹“连接失败”。
+            if (_playlists is null)
+            {
+                ErrorText.Text = "暂时无法加载内容，稍后自动重试";
+                ErrorText.Visibility = Visibility.Visible;
+            }
+            AppLog.Write("home load failed: " + ex.Message);
         }
         finally
         {
             LoadingRing.IsActive = false;
         }
         RefreshRecent();
+    }
+
+    private void LoadCached()
+    {
+        try
+        {
+            if (_playlists is not null || !File.Exists(CacheFile)) return;
+            var cache = JsonSerializer.Deserialize<HomeCache>(File.ReadAllText(CacheFile), JsonOptions);
+            if (cache is null) return;
+            _playlists = cache.Playlists;
+            _charts = cache.Charts;
+            _newSongs = cache.NewSongs;
+            _singers = cache.Singers;
+            ApplyData();
+        }
+        catch
+        {
+            /* 缓存损坏时忽略 */
+        }
+    }
+
+    private void ApplyData()
+    {
+        PlaylistRail.ItemsSource = _playlists;
+        ChartRail.ItemsSource = _charts is null ? null : MixCharts(_charts);
+        NewSongRail.ItemsSource = _newSongs;
+        SingerRail.ItemsSource = _singers;
+    }
+
+    private void SaveCache()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppInfo.DataDirectory);
+            var cache = new HomeCache { Playlists = _playlists, Charts = _charts, NewSongs = _newSongs, Singers = _singers };
+            File.WriteAllText(CacheFile, JsonSerializer.Serialize(cache, JsonOptions));
+        }
+        catch
+        {
+            /* 缓存写入失败不影响页面 */
+        }
     }
 
     private static List<ChartInfo> MixCharts(List<ChartInfo> charts)

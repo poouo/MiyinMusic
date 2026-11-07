@@ -25,7 +25,8 @@ public sealed partial class MainWindow : Window
     private bool _updatingVolume;
     private bool _draggingProgress;
     private bool _draggingVolume;
-    private bool _connecting;
+    private bool _initializing;
+    private bool _retryScheduled;
     private bool _exiting;
     private bool _hidingToTray;
 
@@ -187,61 +188,69 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>先展示主界面（有缓存就先展示缓存），连接过程完全放到后台。</summary>
+    public void StartShell()
+    {
+        NavigateTo(typeof(HomePage), null, "home");
+        _ = InitializeAsync();
+    }
+
     public async Task InitializeAsync()
     {
+        if (_initializing || _exiting) return;
+        _initializing = true;
         try
         {
             AppLog.Write("window init start api=" + ConfigService.Current.ApiBase);
             await LocalMediaServer.Instance.StartAsync();
-            StartupText.Text = "正在连接音乐服务…";
             var (ok, message, version) = await ApiService.TestConnectionAsync(ConfigService.Current.ApiBase);
             if (!ok)
             {
-                StartupOverlay.Visibility = Visibility.Collapsed;
-                ShowConnectionError(message);
+                AppLog.Write("background connect failed: " + message);
+                ScheduleRetry();
                 return;
             }
-            ApiStatusText.Text = "已连接" + (string.IsNullOrEmpty(version) ? "" : " · v" + version);
-            ApiStatusDot.Fill = (Brush)Application.Current.Resources["AccentBrush"];
+
             AppLog.Write("connected api=" + ConfigService.Current.ApiBase + " version=" + version);
             await AuthService.Instance.InitializeAsync();
             await LibraryService.Instance.ReloadAsync();
             RefreshUserCard();
-            StartupOverlay.Visibility = Visibility.Collapsed;
-            NavigateTo(typeof(HomePage), null, "home");
+
+            // 连接成功后再把当前页面刷新成最新数据；用户不会看到连接过程。
+            await RefreshCurrentPageAsync();
         }
         catch (Exception ex)
         {
-            StartupOverlay.Visibility = Visibility.Collapsed;
-            ShowConnectionError("启动失败：" + ex.Message);
-        }
-    }
-
-    private void ShowConnectionError(string message)
-    {
-        ConnectionErrorOverlay.Visibility = Visibility.Visible;
-        ConnectionErrorText.Text = message;
-        ApiStatusText.Text = "未连接";
-        ApiStatusDot.Fill = new SolidColorBrush(ColorHelper.FromArgb(255, 255, 93, 108));
-    }
-
-    private async void RetryConnect_Click(object sender, RoutedEventArgs e)
-    {
-        if (_connecting) return;
-        _connecting = true;
-        RetryButton.IsEnabled = false;
-        ConnectionErrorOverlay.Visibility = Visibility.Collapsed;
-        StartupOverlay.Visibility = Visibility.Visible;
-        StartupText.Text = "正在重新连接…";
-        try
-        {
-            await InitializeAsync();
+            AppLog.Write("background init failed: " + ex.Message);
+            ScheduleRetry();
         }
         finally
         {
-            _connecting = false;
-            RetryButton.IsEnabled = true;
+            _initializing = false;
         }
+    }
+
+    private async Task RefreshCurrentPageAsync()
+    {
+        if (ContentFrame.Content is HomePage home)
+        {
+            await home.RefreshAsync();
+        }
+    }
+
+    private async void ScheduleRetry()
+    {
+        if (_retryScheduled || _exiting) return;
+        _retryScheduled = true;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            _retryScheduled = false;
+        }
+        if (!_exiting) await InitializeAsync();
     }
 
     public void NavigateTo(Type pageType, object? parameter = null, string? navKey = null)
