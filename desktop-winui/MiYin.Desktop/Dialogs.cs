@@ -122,9 +122,10 @@ public static class Dialogs
     public static async Task LoginAsync()
     {
         if (Root is null) return;
-        var username = new TextBox { Header = "用户名", PlaceholderText = "请输入用户名", Height = 38 };
-        var password = new PasswordBox { Header = "密码", PlaceholderText = "请输入密码", Height = 38 };
-        var nickname = new TextBox { Header = "昵称（可选）", Height = 38, Visibility = Visibility.Collapsed };
+        // 带 Header 的输入框不要再固定 38px 高度：Header 会占掉空间，输入区域会被压成一条线。
+        var username = new TextBox { Header = "用户名", PlaceholderText = "请输入用户名" };
+        var password = new PasswordBox { Header = "密码", PlaceholderText = "请输入密码" };
+        var nickname = new TextBox { Header = "昵称（可选）", Visibility = Visibility.Collapsed };
         var registerSwitch = new ToggleSwitch { Header = "注册新账号", IsOn = false };
         var allowRegister = AuthService.Instance.ServerConfig?.AllowRegister ?? true;
         registerSwitch.Visibility = allowRegister ? Visibility.Visible : Visibility.Collapsed;
