@@ -1,0 +1,18 @@
+{
+  "name": "觅音 · MiYin Music",
+  "short_name": "觅音",
+  "description": "自托管的 Web 音乐播放器，音源来自洛雪音乐",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07080d",
+  "theme_color": "#07080d",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

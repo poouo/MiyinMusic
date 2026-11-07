@@ -1,0 +1,120 @@
+<Page
+    x:Class="MiYin.Desktop.Views.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MiYin.Desktop.Controls"
+    Background="Transparent">
+
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Padding="28,16,28,40" Spacing="26">
+                <Grid>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="发现好音乐" Style="{StaticResource PageTitleStyle}" />
+                        <TextBlock Text="聚合网易云与 QQ 音乐的歌单、榜单、新歌和歌手" Style="{StaticResource MutedTextStyle}" />
+                    </StackPanel>
+                    <ProgressRing x:Name="LoadingRing" IsActive="True" Width="26" Height="26" HorizontalAlignment="Right"
+                                  Foreground="{StaticResource AccentBrush}" />
+                </Grid>
+
+                <Border Height="150" CornerRadius="18" Padding="28,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#1D5B46" Offset="0" />
+                            <GradientStop Color="#17304C" Offset="0.55" />
+                            <GradientStop Color="#2B1F4A" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <StackPanel VerticalAlignment="Center" Spacing="6">
+                            <TextBlock Text="听见此刻，从觅音开始" FontSize="24" FontWeight="Bold" Foreground="White" />
+                            <TextBlock Text="每日更新歌单 · 新歌速递 · 热门歌手" FontSize="12" Foreground="#CCE8FFF0" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                                <Button Style="{StaticResource PrimaryButtonStyle}" Content="歌单广场" Height="30" Click="OpenSquare_Click" />
+                                <Button Style="{StaticResource GhostButtonStyle}" Content="排行榜" Height="30" Click="OpenCharts_Click" />
+                                <Button Style="{StaticResource GhostButtonStyle}" Content="播放新歌" Height="30" Click="PlayNewSongs_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                        <FontIcon Glyph="&#xE8D6;" FontSize="120" Foreground="White" Opacity="0.10"
+                                  HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    </Grid>
+                </Border>
+
+                <StackPanel x:Name="PlaylistSection" Spacing="10">
+                    <Grid>
+                        <TextBlock Text="推荐歌单" Style="{StaticResource SectionTitleStyle}" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
+                                Content="全部" Click="OpenSquare_Click" />
+                    </Grid>
+                    <ListView x:Name="PlaylistRail" Height="220" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemTemplate="{StaticResource PlaylistCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                              ItemClick="PlaylistRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                    </ListView>
+                </StackPanel>
+
+                <StackPanel x:Name="ChartSection" Spacing="10">
+                    <Grid>
+                        <TextBlock Text="排行榜" Style="{StaticResource SectionTitleStyle}" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
+                                Content="全部" Click="OpenCharts_Click" />
+                    </Grid>
+                    <ListView x:Name="ChartRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemTemplate="{StaticResource ChartCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                              ItemClick="ChartRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                    </ListView>
+                </StackPanel>
+
+                <StackPanel x:Name="NewSongSection" Spacing="10">
+                    <Grid>
+                        <TextBlock Text="新歌速递" Style="{StaticResource SectionTitleStyle}" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
+                                Content="播放全部" Click="PlayNewSongs_Click" />
+                    </Grid>
+                    <ListView x:Name="NewSongRail" Height="210" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemTemplate="{StaticResource SongCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                              ItemClick="NewSongRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                    </ListView>
+                </StackPanel>
+
+                <StackPanel x:Name="SingerSection" Spacing="10">
+                    <TextBlock Text="热门歌手" Style="{StaticResource SectionTitleStyle}" />
+                    <ListView x:Name="SingerRail" Height="166" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemTemplate="{StaticResource SingerCardTemplate}" ItemContainerStyle="{StaticResource CardItemStyle}"
+                              ItemClick="SingerRail_ItemClick" Background="Transparent" Padding="0,2,0,2"
+                              ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                              ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListView.ItemsPanel>
+                            <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ListView.ItemsPanel>
+                    </ListView>
+                </StackPanel>
+
+                <StackPanel x:Name="RecentSection" Spacing="10" Visibility="Collapsed">
+                    <Grid>
+                        <TextBlock Text="最近播放" Style="{StaticResource SectionTitleStyle}" />
+                        <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"
+                                Content="全部" Click="OpenRecent_Click" />
+                    </Grid>
+                    <controls:SongListView x:Name="RecentSongs" />
+                </StackPanel>
+
+                <TextBlock x:Name="ErrorText" Foreground="{StaticResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

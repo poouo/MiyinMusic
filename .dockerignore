@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.github
+data
+dist
+docs
+desktop-winui
+scripts
+*.log
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore

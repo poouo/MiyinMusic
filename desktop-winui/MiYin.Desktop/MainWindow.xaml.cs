@@ -1,0 +1,665 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using MiYin.Desktop.Models;
+using MiYin.Desktop.Services;
+using MiYin.Desktop.Views;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
+
+namespace MiYin.Desktop;
+
+public sealed partial class MainWindow : Window
+{
+    public static MainWindow Instance { get; private set; } = null!;
+
+    public MediaService Player => MediaService.Instance;
+
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _toastTimer;
+    private bool _updatingProgress;
+    private bool _updatingVolume;
+    private bool _draggingProgress;
+    private bool _draggingVolume;
+    private bool _connecting;
+    private bool _exiting;
+    private bool _hidingToTray;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        Instance = this;
+        Root.DataContext = this;
+        ConfigureWindow();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WindowIcon.Apply(hwnd);
+        TrayIcon.Instance.Initialize(hwnd);
+        AppWindow.Closing += AppWindow_Closing;
+        AppWindow.Changed += AppWindow_Changed;
+        Activated += MainWindow_Activated;
+
+        _toastTimer = DispatcherQueue.CreateTimer();
+        _toastTimer.Interval = TimeSpan.FromSeconds(3.4);
+        _toastTimer.IsRepeating = false;
+        _toastTimer.Tick += (_, _) => ToastBar.IsOpen = false;
+
+        SidebarPlaylists.ItemsSource = LibraryService.Instance.Playlists;
+        QueueList.ItemsSource = Player.Queue;
+        LyricsList.ItemsSource = Player.Lyrics;
+        Player.Lyrics.CollectionChanged += (_, _) => UpdateLyricsEmptyState();
+
+        Player.PropertyChanged += Player_PropertyChanged;
+        Player.Queue.CollectionChanged += (_, _) => UpdateQueueState();
+        AuthService.Instance.Changed += (_, _) => RefreshUserCard();
+        LibraryService.Instance.Changed += (_, _) => RefreshUserCard();
+        Notify.Shown += ShowToast;
+
+        ProgressSlider.PointerPressed += (_, _) => _draggingProgress = true;
+        ProgressSlider.PointerReleased += (_, _) => _draggingProgress = false;
+        ProgressSlider.PointerCaptureLost += (_, _) => _draggingProgress = false;
+        FullProgressSlider.PointerPressed += (_, _) => _draggingProgress = true;
+        FullProgressSlider.PointerReleased += (_, _) => _draggingProgress = false;
+        FullProgressSlider.PointerCaptureLost += (_, _) => _draggingProgress = false;
+        VolumeSlider.PointerPressed += (_, _) => _draggingVolume = true;
+        VolumeSlider.PointerReleased += (_, _) => _draggingVolume = false;
+        VolumeSlider.PointerCaptureLost += (_, _) => _draggingVolume = false;
+
+        Closed += MainWindow_Closed;
+        RefreshUserCard();
+        UpdateQueueState();
+        UpdateHeartIcon();
+        UpdateLyricsEmptyState();
+        TrayIcon.Instance.UpdateTooltip("觅音");
+        VolumeSlider.Value = Player.Volume;
+    }
+
+    private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        WindowIcon.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_exiting || !ConfigService.Current.CloseToTray) return;
+        args.Cancel = true;
+        HideToTray();
+    }
+
+    private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (_exiting || _hidingToTray || !ConfigService.Current.MinimizeToTray) return;
+        if (sender.Presenter is not OverlappedPresenter presenter || presenter.State != OverlappedPresenterState.Minimized) return;
+        _hidingToTray = true;
+        DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Task.Delay(150);
+            if (!_exiting && sender.Presenter is OverlappedPresenter current && current.State == OverlappedPresenterState.Minimized)
+            {
+                HideToTray();
+            }
+            _hidingToTray = false;
+        });
+    }
+
+    public void HideToTray()
+    {
+        AppWindow.Hide();
+        TrayIcon.Instance.ShowBalloon("觅音", "已隐藏到托盘，双击托盘图标可恢复窗口。");
+    }
+
+    public void ShowFromTray()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter && presenter.State == OverlappedPresenterState.Minimized)
+        {
+            presenter.Restore();
+        }
+        AppWindow.Show();
+        Activate();
+        try
+        {
+            SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    public void RequestExit()
+    {
+        _exiting = true;
+        Close();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    private void ConfigureWindow()
+    {
+        var settings = ConfigService.Current.Window;
+        var width = Math.Max(1080, settings.Width);
+        var height = Math.Max(680, settings.Height);
+        AppWindow.Resize(new SizeInt32(width, height));
+        if (settings.X is int x && settings.Y is int y)
+        {
+            try
+            {
+                AppWindow.Move(new PointInt32(x, y));
+            }
+            catch
+            {
+                /* 屏幕配置变化时忽略旧坐标 */
+            }
+        }
+        if (settings.Maximized)
+        {
+            try
+            {
+                (AppWindow.Presenter as OverlappedPresenter)?.Maximize();
+            }
+            catch
+            {
+                /* ignore */
+            }
+        }
+
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarArea);
+        var titleBar = AppWindow.TitleBar;
+        titleBar.ButtonBackgroundColor = Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        titleBar.ButtonForegroundColor = ColorHelper.FromArgb(255, 238, 242, 248);
+        titleBar.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 140, 150, 168);
+        titleBar.ButtonHoverBackgroundColor = ColorHelper.FromArgb(255, 30, 36, 50);
+        titleBar.ButtonHoverForegroundColor = Colors.White;
+
+        try
+        {
+            AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"));
+        }
+        catch
+        {
+            /* 图标可选 */
+        }
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            AppLog.Write("window init start api=" + ConfigService.Current.ApiBase);
+            await LocalMediaServer.Instance.StartAsync();
+            StartupText.Text = "正在连接音乐服务…";
+            var (ok, message, version) = await ApiService.TestConnectionAsync(ConfigService.Current.ApiBase);
+            if (!ok)
+            {
+                StartupOverlay.Visibility = Visibility.Collapsed;
+                ShowConnectionError(message);
+                return;
+            }
+            ApiStatusText.Text = "已连接" + (string.IsNullOrEmpty(version) ? "" : " · v" + version);
+            ApiStatusDot.Fill = (Brush)Application.Current.Resources["AccentBrush"];
+            AppLog.Write("connected api=" + ConfigService.Current.ApiBase + " version=" + version);
+            await AuthService.Instance.InitializeAsync();
+            await LibraryService.Instance.ReloadAsync();
+            RefreshUserCard();
+            StartupOverlay.Visibility = Visibility.Collapsed;
+            NavigateTo(typeof(HomePage), null, "home");
+        }
+        catch (Exception ex)
+        {
+            StartupOverlay.Visibility = Visibility.Collapsed;
+            ShowConnectionError("启动失败：" + ex.Message);
+        }
+    }
+
+    private void ShowConnectionError(string message)
+    {
+        ConnectionErrorOverlay.Visibility = Visibility.Visible;
+        ConnectionErrorText.Text = message;
+        ApiStatusText.Text = "未连接";
+        ApiStatusDot.Fill = new SolidColorBrush(ColorHelper.FromArgb(255, 255, 93, 108));
+    }
+
+    private async void RetryConnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (_connecting) return;
+        _connecting = true;
+        RetryButton.IsEnabled = false;
+        ConnectionErrorOverlay.Visibility = Visibility.Collapsed;
+        StartupOverlay.Visibility = Visibility.Visible;
+        StartupText.Text = "正在重新连接…";
+        try
+        {
+            await InitializeAsync();
+        }
+        finally
+        {
+            _connecting = false;
+            RetryButton.IsEnabled = true;
+        }
+    }
+
+    public void NavigateTo(Type pageType, object? parameter = null, string? navKey = null)
+    {
+        ContentFrame.Navigate(pageType, parameter);
+        if (!string.IsNullOrEmpty(navKey)) SetNavSelected(navKey);
+    }
+
+    private void ContentFrame_Navigated(object sender, Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        BackButton.IsEnabled = ContentFrame.CanGoBack;
+    }
+
+    private void SetNavSelected(string key)
+    {
+        var accent = (Brush)Application.Current.Resources["AccentBrush"];
+        var accentSoft = (Brush)Application.Current.Resources["AccentSoftBrush"];
+        var dim = (Brush)Application.Current.Resources["TextDimBrush"];
+        foreach (var panel in new[] { MainNav, LibraryNav })
+        {
+            foreach (var child in panel.Children)
+            {
+                if (child is not Button button) continue;
+                var active = (button.Tag as string) == key;
+                button.Background = active ? accentSoft : new SolidColorBrush(Colors.Transparent);
+                button.Foreground = active ? accent : dim;
+            }
+        }
+    }
+
+    private void Nav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var tag = button.Tag as string ?? "home";
+        switch (tag)
+        {
+            case "home":
+                NavigateTo(typeof(HomePage), null, "home");
+                break;
+            case "charts":
+                NavigateTo(typeof(ChartsPage), null, "charts");
+                break;
+            case "square":
+                NavigateTo(typeof(SquarePage), null, "square");
+                break;
+            case "search":
+                NavigateTo(typeof(SearchPage), null, "search");
+                break;
+            case "settings":
+                NavigateTo(typeof(SettingsPage), null, "settings");
+                break;
+            case "liked":
+                NavigateTo(typeof(LibraryPage), "liked", "liked");
+                break;
+            case "recent":
+                NavigateTo(typeof(LibraryPage), "recent", "recent");
+                break;
+            case "downloads":
+                NavigateTo(typeof(DownloadsPage), null, "downloads");
+                break;
+        }
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e)
+    {
+        if (NowPlayingOverlay.Visibility == Visibility.Visible)
+        {
+            NowPlayingOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (QueueOverlay.Visibility == Visibility.Visible)
+        {
+            QueueOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+        if (ContentFrame.CanGoBack)
+        {
+            ContentFrame.GoBack();
+        }
+    }
+
+    private void GlobalSearch_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        var query = (args.QueryText ?? sender.Text ?? "").Trim();
+        NavigateTo(typeof(SearchPage), query, "search");
+    }
+
+    private void RefreshUserCard()
+    {
+        var user = AuthService.Instance.User;
+        if (user is null)
+        {
+            UserInitial.Text = "♪";
+            UserName.Text = "登录 / 注册";
+            UserRole.Text = "同步歌单与收藏";
+        }
+        else
+        {
+            UserInitial.Text = user.Initial;
+            UserName.Text = user.Nickname;
+            UserRole.Text = user.RoleText;
+        }
+    }
+
+    private async void UserButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AuthService.Instance.IsLoggedIn)
+        {
+            await Dialogs.LoginAsync();
+            RefreshUserCard();
+            return;
+        }
+        var flyout = new MenuFlyout();
+        var settings = new MenuFlyoutItem { Text = "账号与设置" };
+        settings.Click += (_, _) => NavigateTo(typeof(SettingsPage), null, "settings");
+        flyout.Items.Add(settings);
+        if (AuthService.Instance.IsAdmin)
+        {
+            var admin = new MenuFlyoutItem { Text = "打开管理后台" };
+            admin.Click += (_, _) => OpenExternal(ApiService.BaseUrl + "/#/admin");
+            flyout.Items.Add(admin);
+        }
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        var logout = new MenuFlyoutItem { Text = "退出登录" };
+        logout.Click += async (_, _) =>
+        {
+            await AuthService.Instance.LogoutAsync();
+            RefreshUserCard();
+            NavigateTo(typeof(HomePage), null, "home");
+            Notify.Show("已退出登录");
+        };
+        flyout.Items.Add(logout);
+        flyout.ShowAt(UserButton);
+    }
+
+    private static void OpenExternal(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            Notify.Show("无法打开浏览器", true);
+        }
+    }
+
+    private async void AddPlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        var name = await Dialogs.PromptAsync("新建歌单", "给歌单起个名字", "", "创建");
+        if (name is null) return;
+        var playlist = await LibraryService.Instance.CreatePlaylistAsync(name);
+        if (playlist is not null)
+        {
+            Notify.Show("歌单已创建");
+            NavigateTo(typeof(LibraryPage), playlist);
+            SetNavSelected("");
+        }
+    }
+
+    private void SidebarPlaylist_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is Playlist playlist)
+        {
+            NavigateTo(typeof(LibraryPage), playlist);
+            SetNavSelected("");
+        }
+    }
+
+    // ---------------- 播放控制 ----------------
+    private async void PlayPause_Click(object sender, RoutedEventArgs e) => await Player.PlayPauseAsync();
+
+    private void Prev_Click(object sender, RoutedEventArgs e) => Player.Previous();
+
+    private void Next_Click(object sender, RoutedEventArgs e) => Player.Next();
+
+    private void Shuffle_Click(object sender, RoutedEventArgs e) => Player.ToggleShuffle();
+
+    private void Repeat_Click(object sender, RoutedEventArgs e)
+    {
+        Player.CycleRepeat();
+        Notify.Show(Player.RepeatText);
+    }
+
+    private void ToggleMute_Click(object sender, RoutedEventArgs e) => Player.ToggleMute();
+
+    private async void PlayerFavorite_Click(object sender, RoutedEventArgs e)
+    {
+        if (Player.Current is null) return;
+        await LibraryService.Instance.ToggleFavoriteAsync(Player.Current);
+        UpdateHeartIcon();
+    }
+
+    private void UpdateHeartIcon()
+    {
+        if (Player.Current is null)
+        {
+            PlayerHeartIcon.Glyph = "\uEB51";
+            PlayerHeartIcon.Foreground = (Brush)Application.Current.Resources["TextDimBrush"];
+            return;
+        }
+        var favorite = LibraryService.Instance.IsFavorite(Player.Current);
+        PlayerHeartIcon.Glyph = favorite ? "\uEB52" : "\uEB51";
+        PlayerHeartIcon.Foreground = (Brush)Application.Current.Resources[(favorite ? "PinkBrush" : "TextDimBrush")];
+    }
+
+    private void Quality_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var flyout = new MenuFlyout();
+        var autoItem = new MenuFlyoutItem { Text = "自动（按设置优先）" };
+        autoItem.Click += async (_, _) => await Player.SetQualityAsync("auto");
+        flyout.Items.Add(autoItem);
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        var qualities = Player.Current?.Qualities?.Distinct().ToList() ?? new List<string> { "flac", "320k", "128k" };
+        foreach (var quality in qualities)
+        {
+            var item = new MenuFlyoutItem { Text = QualityName(quality) };
+            item.Click += async (_, _) => await Player.SetQualityAsync(quality);
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(button);
+    }
+
+    private static string QualityName(string quality) => quality switch
+    {
+        "flac24bit" => "Hi-Res 无损",
+        "flac" => "无损 SQ",
+        "320k" => "高品质 HQ",
+        "128k" => "标准音质",
+        _ => quality,
+    };
+
+    private void ProgressSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_updatingProgress || !_draggingProgress) return;
+        Player.Seek(TimeSpan.FromSeconds(e.NewValue));
+    }
+
+    private void FullProgressSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_updatingProgress || !_draggingProgress) return;
+        Player.Seek(TimeSpan.FromSeconds(e.NewValue));
+    }
+
+    private void VolumeSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_updatingVolume || !_draggingVolume) return;
+        Player.SetVolume(e.NewValue);
+    }
+
+    private void Player_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(MediaService.PositionSeconds):
+                if (!_draggingProgress) UpdateProgressSliders(Player.PositionSeconds);
+                break;
+            case nameof(MediaService.DurationSeconds):
+                UpdateProgressMaximum(Player.DurationSeconds);
+                break;
+            case nameof(MediaService.Volume):
+                if (!_draggingVolume)
+                {
+                    _updatingVolume = true;
+                    VolumeSlider.Value = Player.Volume;
+                    _updatingVolume = false;
+                }
+                break;
+            case nameof(MediaService.ActiveLyricIndex):
+                UpdateLyricSelection();
+                break;
+            case nameof(MediaService.Current):
+            case nameof(MediaService.HasCurrent):
+                UpdateHeartIcon();
+                TrayIcon.Instance.UpdateTooltip(Player.Current is null
+                    ? "觅音"
+                    : "觅音 · " + Player.Title + " - " + Player.Singer);
+                break;
+            case nameof(MediaService.QueueIndex):
+                UpdateQueueState();
+                break;
+        }
+    }
+
+    private void UpdateProgressSliders(double seconds)
+    {
+        _updatingProgress = true;
+        ProgressSlider.Value = seconds;
+        FullProgressSlider.Value = seconds;
+        _updatingProgress = false;
+    }
+
+    private void UpdateProgressMaximum(double seconds)
+    {
+        ProgressSlider.Maximum = Math.Max(1, seconds);
+        FullProgressSlider.Maximum = Math.Max(1, seconds);
+    }
+
+    private void UpdateLyricsEmptyState()
+    {
+        NoLyricsText.Visibility = Player.Lyrics.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateLyricSelection()
+    {
+        var index = Player.ActiveLyricIndex;
+        if (index < 0 || index >= Player.Lyrics.Count) return;
+        if (LyricsList.SelectedIndex != index)
+        {
+            LyricsList.SelectedIndex = index;
+            if (NowPlayingOverlay.Visibility == Visibility.Visible)
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    try
+                    {
+                        LyricsList.ScrollIntoView(Player.Lyrics[index], ScrollIntoViewAlignment.Default);
+                    }
+                    catch
+                    {
+                        /* ignore */
+                    }
+                });
+            }
+        }
+    }
+
+    private void FullPlayer_Click(object sender, RoutedEventArgs e)
+    {
+        NowPlayingOverlay.Visibility = Visibility.Visible;
+        QueueOverlay.Visibility = Visibility.Collapsed;
+        UpdateLyricSelection();
+    }
+
+    private void CloseNowPlaying_Click(object sender, RoutedEventArgs e) => NowPlayingOverlay.Visibility = Visibility.Collapsed;
+
+    private void Lyric_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is LyricLine line) Player.Seek(line.Time);
+    }
+
+    private void Queue_Click(object sender, RoutedEventArgs e)
+    {
+        if (QueueOverlay.Visibility == Visibility.Visible)
+        {
+            QueueOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+        QueueOverlay.Visibility = Visibility.Visible;
+        NowPlayingOverlay.Visibility = Visibility.Collapsed;
+        UpdateQueueState();
+        if (Player.Current is not null)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    QueueList.ScrollIntoView(Player.Current);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            });
+        }
+    }
+
+    private void CloseQueue_Click(object sender, RoutedEventArgs e) => QueueOverlay.Visibility = Visibility.Collapsed;
+
+    private void Queue_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not Song song) return;
+        var index = Player.Queue.IndexOf(song);
+        if (index >= 0) Player.PlayAt(index);
+    }
+
+    private void QueueRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not Song song) return;
+        var index = Player.Queue.IndexOf(song);
+        if (index >= 0) Player.RemoveFromQueue(index);
+        UpdateQueueState();
+    }
+
+    private void QueueClear_Click(object sender, RoutedEventArgs e)
+    {
+        Player.ClearQueue();
+        UpdateQueueState();
+    }
+
+    private void UpdateQueueState()
+    {
+        QueueCountText.Text = Player.Queue.Count > 0 ? Player.Queue.Count + " 首" : "";
+        QueueEmptyText.Visibility = Player.Queue.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ShowToast(object? sender, NotifyEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ToastBar.Title = e.IsError ? "操作失败" : "提示";
+            ToastBar.Message = e.Message;
+            ToastBar.Severity = e.IsError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
+            ToastBar.IsOpen = true;
+            _toastTimer.Stop();
+            _toastTimer.Start();
+        });
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    {
+        var presenter = AppWindow.Presenter as OverlappedPresenter;
+        var maximized = presenter?.State == OverlappedPresenterState.Maximized;
+        ConfigService.SaveWindow(AppWindow.Size.Width, AppWindow.Size.Height, AppWindow.Position.X, AppWindow.Position.Y, maximized);
+        Player.Dispose();
+        TrayIcon.Instance.Dispose();
+        WindowIcon.Dispose();
+        _ = LocalMediaServer.Instance.StopAsync();
+    }
+}

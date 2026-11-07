@@ -1,0 +1,20 @@
+services:
+  miyin:
+    image: ghcr.io/poouo/miyinmusic:latest
+    container_name: miyin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ENV: production
+      MIYIN_DATA_DIR: /app/data
+      # MIYIN_NO_SOURCE_UPDATE: "1"
+    volumes:
+      - ./data:/app/data
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

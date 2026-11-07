@@ -1,0 +1,26 @@
+<Page
+    x:Class="MiYin.Desktop.Views.ChartsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel Padding="28,16,28,10" Spacing="5">
+            <Grid>
+                <TextBlock Text="排行榜" Style="{StaticResource PageTitleStyle}" />
+                <ProgressRing x:Name="LoadingRing" IsActive="True" Width="24" Height="24" HorizontalAlignment="Right"
+                              Foreground="{StaticResource AccentBrush}" />
+            </Grid>
+            <TextBlock x:Name="SubtitleText" Text="网易云、QQ 音乐、酷我、酷狗的实时榜单" Style="{StaticResource MutedTextStyle}" />
+        </StackPanel>
+        <ComboBox x:Name="PlatformBox" Grid.Row="1" Width="180" Height="34" Margin="28,0,0,14"
+                  SelectionChanged="PlatformBox_SelectionChanged" />
+        <GridView x:Name="ChartGrid" Grid.Row="2" Padding="28,0,28,28" SelectionMode="None" IsItemClickEnabled="True"
+                  ItemTemplate="{StaticResource ChartCardTemplate}" ItemContainerStyle="{StaticResource GridCardItemStyle}"
+                  ItemClick="ChartGrid_ItemClick" Background="Transparent" />
+    </Grid>
+</Page>

@@ -1,0 +1,49 @@
+<Page
+    x:Class="MiYin.Desktop.Views.SongsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:MiYin.Desktop.Controls"
+    Background="Transparent">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="28,18,28,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Rectangle x:Name="CoverRect" Width="170" Height="170" RadiusX="18" RadiusY="18" HorizontalAlignment="Left" VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Margin="24,0,12,0" VerticalAlignment="Center" Spacing="7">
+                <TextBlock x:Name="KindText" Text="歌单" FontSize="11" Foreground="{StaticResource TextFaintBrush}" CharacterSpacing="40" />
+                <TextBlock x:Name="TitleText" Text="" FontSize="27" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                           TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" />
+                <TextBlock x:Name="MetaText" Text="" FontSize="12" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap" />
+                <TextBlock x:Name="DescText" Text="" FontSize="12" Foreground="{StaticResource TextFaintBrush}" TextWrapping="Wrap"
+                           MaxLines="2" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                    <Button x:Name="PlayAllButton" Style="{StaticResource PrimaryButtonStyle}" Click="PlayAll_Click" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE768;" FontSize="12" />
+                            <TextBlock Text="播放全部" FontSize="12.5" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+            <ProgressRing x:Name="LoadingRing" Grid.Column="2" IsActive="True" Width="26" Height="26" Foreground="{StaticResource AccentBrush}" />
+        </Grid>
+
+        <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" Grid.Row="1" Padding="28,0,28,30" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="ErrorText" Foreground="{StaticResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
+                <controls:SongListView x:Name="Songs" />
+                <Button x:Name="LoadMoreButton" Style="{StaticResource GhostButtonStyle}" Content="加载更多歌曲"
+                        HorizontalAlignment="Center" Visibility="Collapsed" Click="LoadMore_Click" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

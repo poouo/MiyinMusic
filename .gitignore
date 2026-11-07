@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+*.log
+.DS_Store
+.scratch/
+.env
+.env.local
+
+# Windows client build outputs
+desktop-winui/**/bin/
+desktop-winui/**/obj/
+desktop-winui/**/publish/
+
+# Docker build data
+docker-data/

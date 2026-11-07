@@ -1,0 +1,567 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { api } from '../lib/api'
+import { imageSrc } from '../lib/api'
+import { loadJson, saveJson } from '../lib/storage'
+import { songKey } from '../lib/types'
+import type { LyricResult, Quality, RepeatMode, Song } from '../lib/types'
+import { useLibrary } from './library'
+import { useSettings } from './settings'
+import { useToast } from './toast'
+
+interface PersistedState {
+  queue: Song[]
+  index: number
+  repeat: RepeatMode
+  shuffle: boolean
+}
+
+interface PlayerApi {
+  queue: Song[]
+  index: number
+  current: Song | null
+  playing: boolean
+  loading: boolean
+  error: string | null
+  currentTime: number
+  duration: number
+  volume: number
+  muted: boolean
+  repeat: RepeatMode
+  shuffle: boolean
+  quality: Quality
+  sourceName: string | null
+  lyric: LyricResult | null
+  lyricLoading: boolean
+  playSongs: (songs: Song[], startIndex?: number) => void
+  playSong: (song: Song, list?: Song[]) => void
+  togglePlay: () => void
+  next: () => void
+  prev: () => void
+  seek: (time: number) => void
+  setVolume: (value: number) => void
+  toggleMute: () => void
+  cycleRepeat: () => void
+  toggleShuffle: () => void
+  setQuality: (quality: Quality) => void
+  playAt: (index: number) => void
+  addToQueue: (song: Song, position?: 'next' | 'end') => void
+  removeFromQueue: (index: number) => void
+  clearQueue: () => void
+  stop: () => void
+}
+
+const PlayerContext = createContext<PlayerApi | null>(null)
+
+const PERSIST_KEY = 'player.v1'
+
+export function PlayerProvider({ children }: { children: ReactNode }) {
+  const { settings, update: updateSettings } = useSettings()
+  const library = useLibrary()
+  const toast = useToast()
+
+  const persisted = useRef<PersistedState>(
+    loadJson<PersistedState>(PERSIST_KEY, { queue: [], index: 0, repeat: 'all', shuffle: false }),
+  )
+
+  const [queue, setQueue] = useState<Song[]>(() => persisted.current.queue ?? [])
+  const [index, setIndex] = useState(() => {
+    const saved = persisted.current.index ?? 0
+    return Math.min(Math.max(0, saved), Math.max(0, (persisted.current.queue?.length ?? 1) - 1))
+  })
+  const [playing, setPlaying] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolumeState] = useState(() => {
+    const saved = persisted.current as unknown as { volume?: number }
+    return typeof saved.volume === 'number' ? saved.volume : settings.volume
+  })
+  const [muted, setMuted] = useState(false)
+  const [repeat, setRepeat] = useState<RepeatMode>(persisted.current.repeat ?? 'all')
+  const [shuffle, setShuffle] = useState(!!persisted.current.shuffle)
+  const [sourceName, setSourceName] = useState<string | null>(null)
+  const [lyric, setLyric] = useState<LyricResult | null>(null)
+  const [lyricLoading, setLyricLoading] = useState(false)
+  const [requestId, setRequestId] = useState(0)
+
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  // 只有用户主动播放（或自动切歌）时才真正开始播放，避免刷新页面触发浏览器自动播放限制
+  const intentRef = useRef(false)
+  const tokenRef = useRef(0)
+  const retriedRef = useRef(false)
+  const lyricCache = useRef(new Map<string, LyricResult | null>())
+  // 连续失败计数：避免源失效时在整张列表里来回报错、刷屏卡死
+  const failCountRef = useRef(0)
+  const lastErrorRef = useRef({ text: '', at: 0 })
+  const goNextRef = useRef<(manual?: boolean) => void>(() => {})
+  const reportFailureRef = useRef<(song: Song | null, reason: string) => void>(() => {})
+  const stateRef = useRef({ queue, index, repeat, shuffle, quality: settings.quality })
+
+  const current = queue[index] ?? null
+  const quality = settings.quality[0] ?? '320k'
+
+  stateRef.current = { queue, index, repeat, shuffle, quality: settings.quality }
+
+  // ---------- 音频元素 ----------
+  useEffect(() => {
+    const audio = new Audio()
+    audio.preload = 'auto'
+    audio.volume = volume
+    audioRef.current = audio
+
+    const onTime = () => setCurrentTime(audio.currentTime || 0)
+    const onMeta = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+    const onPlay = () => setPlaying(true)
+    const onPause = () => setPlaying(false)
+    const onWaiting = () => setLoading(true)
+    const onPlaying = () => {
+      setLoading(false)
+      retriedRef.current = false
+      failCountRef.current = 0
+    }
+    const onError = () => {
+      setLoading(false)
+      setPlaying(false)
+      const state = stateRef.current
+      if (!retriedRef.current && state.queue.length) {
+        retriedRef.current = true
+        // 播放地址可能过期，重新取一次
+        setRequestId((id) => id + 1)
+        return
+      }
+      reportFailureRef.current(state.queue[state.index] ?? null, '音源地址失效')
+    }
+
+    audio.addEventListener('timeupdate', onTime)
+    audio.addEventListener('loadedmetadata', onMeta)
+    audio.addEventListener('durationchange', onMeta)
+    audio.addEventListener('play', onPlay)
+    audio.addEventListener('pause', onPause)
+    audio.addEventListener('waiting', onWaiting)
+    audio.addEventListener('playing', onPlaying)
+    audio.addEventListener('error', onError)
+    audio.addEventListener('ended', onEnded)
+
+    return () => {
+      audio.pause()
+      audio.removeEventListener('timeupdate', onTime)
+      audio.removeEventListener('loadedmetadata', onMeta)
+      audio.removeEventListener('durationchange', onMeta)
+      audio.removeEventListener('play', onPlay)
+      audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('waiting', onWaiting)
+      audio.removeEventListener('playing', onPlaying)
+      audio.removeEventListener('error', onError)
+      audio.removeEventListener('ended', onEnded)
+      audioRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ---------- 音量 ----------
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.volume = Math.min(1, Math.max(0, volume))
+    audio.muted = muted
+    updateSettings({ volume })
+  }, [volume, muted, updateSettings])
+
+  // ---------- 持久化 ----------
+  useEffect(() => {
+    saveJson(PERSIST_KEY, { queue, index, repeat, shuffle, volume })
+  }, [queue, index, repeat, shuffle, volume])
+
+  // ---------- 核心：加载并播放 ----------
+  useEffect(() => {
+    const audio = audioRef.current
+    const song = queue[index]
+    if (!audio || !song) {
+      setLoading(false)
+      return
+    }
+    if (!intentRef.current) {
+      setLoading(false)
+      return
+    }
+    const token = ++tokenRef.current
+    retriedRef.current = false
+    setLoading(true)
+    setError(null)
+    setSourceName(null)
+    setCurrentTime(0)
+    setDuration(0)
+
+    api
+      .musicUrl(song, stateRef.current.quality)
+      .then((result) => {
+        if (token !== tokenRef.current) return
+        setSourceName(result.sourceName)
+        audio.src = result.playUrl
+        return audio.play().then(() => {
+          if (token === tokenRef.current) {
+            setPlaying(true)
+            library.recordPlay(song)
+          }
+        })
+      })
+      .catch((err: unknown) => {
+        if (token !== tokenRef.current) return
+        const message = err instanceof Error ? err.message : String(err)
+        setError(message)
+        setLoading(false)
+        setPlaying(false)
+        reportFailureRef.current(song, message)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestId])
+
+  // ---------- 歌词 ----------
+  useEffect(() => {
+    if (!current) {
+      setLyric(null)
+      return
+    }
+    const key = songKey(current)
+    const cached = lyricCache.current.get(key)
+    if (cached !== undefined) {
+      setLyric(cached)
+      setLyricLoading(false)
+      return
+    }
+    let cancelled = false
+    setLyricLoading(true)
+    setLyric(null)
+    api
+      .lyric(current)
+      .then((result) => {
+        lyricCache.current.set(key, result.lyric)
+        if (!cancelled) setLyric(result.lyric)
+      })
+      .catch(() => {
+        lyricCache.current.set(key, null)
+        if (!cancelled) setLyric(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLyricLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [current])
+
+  // ---------- 媒体会话 ----------
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    if (!current) {
+      navigator.mediaSession.metadata = null
+      return
+    }
+    const cover = current.img
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: current.name,
+      artist: current.singer,
+      album: current.albumName,
+      artwork: cover
+        ? [{ src: imageSrc(cover) ?? '', sizes: '500x500', type: 'image/jpeg' }]
+        : undefined,
+    })
+    navigator.mediaSession.setActionHandler('play', () => audioRef.current?.play().catch(() => undefined))
+    navigator.mediaSession.setActionHandler('pause', () => audioRef.current?.pause())
+    navigator.mediaSession.setActionHandler('previoustrack', () => goPrev())
+    navigator.mediaSession.setActionHandler('nexttrack', () => goNext(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current])
+
+  // ---------- 导航 ----------
+  const goNext = useCallback(
+    (manual = false) => {
+      const state = stateRef.current
+      if (!state.queue.length) return
+      intentRef.current = true
+      if (state.repeat === 'one' && !manual) {
+        const audio = audioRef.current
+        if (audio) {
+          audio.currentTime = 0
+          void audio.play().catch(() => undefined)
+        }
+        return
+      }
+      if (state.shuffle && state.queue.length > 1) {
+        let next = state.index
+        while (next === state.index) next = Math.floor(Math.random() * state.queue.length)
+        setIndex(next)
+        setRequestId((id) => id + 1)
+        return
+      }
+      const nextIndex = state.index + 1
+      if (nextIndex >= state.queue.length) {
+        if (state.repeat === 'all' || manual) {
+          setIndex(0)
+          setRequestId((id) => id + 1)
+        } else {
+          audioRef.current?.pause()
+          setPlaying(false)
+        }
+        return
+      }
+      setIndex(nextIndex)
+      setRequestId((id) => id + 1)
+    },
+    [],
+  )
+
+  const goPrev = useCallback(() => {
+    const state = stateRef.current
+    const audio = audioRef.current
+    if (!state.queue.length) return
+    intentRef.current = true
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0
+      return
+    }
+    if (state.shuffle && state.queue.length > 1) {
+      let next = state.index
+      while (next === state.index) next = Math.floor(Math.random() * state.queue.length)
+      setIndex(next)
+      setRequestId((id) => id + 1)
+      return
+    }
+    const prevIndex = state.index - 1
+    setIndex(prevIndex < 0 ? state.queue.length - 1 : prevIndex)
+    setRequestId((id) => id + 1)
+  }, [])
+
+  const onEnded = useCallback(() => {
+    goNext(false)
+  }, [goNext])
+
+  goNextRef.current = goNext
+
+  /** 播放失败：同一首歌只提示一次，连续失败就停下，不再一首首刷屏 */
+  const reportFailure = useCallback(
+    (song: Song | null, reason: string) => {
+      failCountRef.current += 1
+      const now = Date.now()
+
+      if (failCountRef.current >= 3) {
+        const text = '连续多首歌曲无法播放，已暂停。可以换一个音质或稍后再试'
+        if (lastErrorRef.current.text !== text) {
+          lastErrorRef.current = { text, at: now }
+          toast.error(text)
+        }
+        audioRef.current?.pause()
+        intentRef.current = false
+        return
+      }
+
+      const text = '《' + (song?.name ?? '这首歌') + '》暂时无法播放，已自动跳过'
+      if (lastErrorRef.current.text !== text || now - lastErrorRef.current.at > 2500) {
+        lastErrorRef.current = { text, at: now }
+        toast.error(text)
+      }
+      if (stateRef.current.queue.length > 1) {
+        window.setTimeout(() => goNextRef.current(true), 240)
+      }
+    },
+    [toast],
+  )
+
+  reportFailureRef.current = reportFailure
+
+  // ---------- 对外操作 ----------
+  const playSongs = useCallback((songs: Song[], startIndex = 0) => {
+    if (!songs.length) return
+    intentRef.current = true
+    const safeIndex = Math.min(Math.max(0, startIndex), songs.length - 1)
+    setQueue(songs)
+    setIndex(safeIndex)
+    setRequestId((id) => id + 1)
+  }, [])
+
+  const playSong = useCallback(
+    (song: Song, list?: Song[]) => {
+      const queueList = list && list.length ? list : [song]
+      const found = queueList.findIndex((item) => songKey(item) === songKey(song))
+      playSongs(queueList, found >= 0 ? found : 0)
+    },
+    [playSongs],
+  )
+
+  const playAt = useCallback((target: number) => {
+    const state = stateRef.current
+    if (target < 0 || target >= state.queue.length) return
+    intentRef.current = true
+    setIndex(target)
+    setRequestId((id) => id + 1)
+  }, [])
+
+  const togglePlay = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (!stateRef.current.queue.length) return
+    if (!audio.src) {
+      intentRef.current = true
+      setRequestId((id) => id + 1)
+      return
+    }
+    if (audio.paused) void audio.play().catch(() => undefined)
+    else audio.pause()
+  }, [])
+
+  const seek = useCallback((time: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const target = Math.max(0, Math.min(time, audio.duration || time))
+    audio.currentTime = target
+    setCurrentTime(target)
+  }, [])
+
+  const setVolume = useCallback((value: number) => {
+    setVolumeState(Math.min(1, Math.max(0, value)))
+  }, [])
+
+  const toggleMute = useCallback(() => setMuted((prev) => !prev), [])
+
+  const cycleRepeat = useCallback(() => {
+    setRepeat((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'))
+  }, [])
+
+  const toggleShuffle = useCallback(() => setShuffle((prev) => !prev), [])
+
+  const setQuality = useCallback(
+    (next: Quality) => {
+      const rest = settings.quality.filter((q) => q !== next)
+      updateSettings({ quality: [next, ...rest] })
+      if (current) setRequestId((id) => id + 1)
+    },
+    [current, settings.quality, updateSettings],
+  )
+
+  const addToQueue = useCallback(
+    (song: Song, position: 'next' | 'end' = 'end') => {
+      setQueue((prev) => {
+        const exists = prev.some((item) => songKey(item) === songKey(song))
+        if (exists) return prev
+        if (position === 'next') {
+          const copy = [...prev]
+          copy.splice(stateRef.current.index + 1, 0, song)
+          return copy
+        }
+        return [...prev, song]
+      })
+      toast.success('已加入播放队列')
+    },
+    [toast],
+  )
+
+  const removeFromQueue = useCallback((target: number) => {
+    setQueue((prev) => {
+      if (target < 0 || target >= prev.length) return prev
+      return prev.filter((_, i) => i !== target)
+    })
+    setIndex((prev) => (target < prev ? prev - 1 : prev))
+  }, [])
+
+  const clearQueue = useCallback(() => {
+    audioRef.current?.pause()
+    setQueue([])
+    setIndex(0)
+    setPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [])
+
+  const stop = useCallback(() => {
+    clearQueue()
+  }, [clearQueue])
+
+  const value = useMemo<PlayerApi>(
+    () => ({
+      queue,
+      index,
+      current,
+      playing,
+      loading,
+      error,
+      currentTime,
+      duration,
+      volume,
+      muted,
+      repeat,
+      shuffle,
+      quality,
+      sourceName,
+      lyric,
+      lyricLoading,
+      playSongs,
+      playSong,
+      togglePlay,
+      next: () => goNext(true),
+      prev: goPrev,
+      seek,
+      setVolume,
+      toggleMute,
+      cycleRepeat,
+      toggleShuffle,
+      setQuality,
+      playAt,
+      addToQueue,
+      removeFromQueue,
+      clearQueue,
+      stop,
+    }),
+    [
+      queue,
+      index,
+      current,
+      playing,
+      loading,
+      error,
+      currentTime,
+      duration,
+      volume,
+      muted,
+      repeat,
+      shuffle,
+      quality,
+      sourceName,
+      lyric,
+      lyricLoading,
+      playSongs,
+      playSong,
+      togglePlay,
+      goNext,
+      goPrev,
+      seek,
+      setVolume,
+      toggleMute,
+      cycleRepeat,
+      toggleShuffle,
+      setQuality,
+      playAt,
+      addToQueue,
+      removeFromQueue,
+      clearQueue,
+      stop,
+    ],
+  )
+
+  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
+}
+
+export function usePlayer(): PlayerApi {
+  const ctx = useContext(PlayerContext)
+  if (!ctx) throw new Error('usePlayer 必须在 PlayerProvider 内使用')
+  return ctx
+}

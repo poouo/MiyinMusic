@@ -1,0 +1,23 @@
+{
+  "name": "miyinmusic",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "觅音 — 一个基于洛雪音源的 Web 音乐播放器（手机 / 平板 / 桌面自适应）",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build && npm --workspace server run build",
+    "start": "node server/dist/index.js",
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
