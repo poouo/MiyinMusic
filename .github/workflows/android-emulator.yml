@@ -76,11 +76,11 @@ jobs:
             sleep 8
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-results.png"
 
-            adb shell input tap 540 520
+            adb shell input tap 540 620
             sleep 9
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-mini.png"
 
-            adb shell input tap 540 1930
+            adb shell input tap 540 1960
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now.png"
 
@@ -90,7 +90,7 @@ jobs:
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
 
-            adb shell input tap 900 330
+            adb shell input tap 900 205
             sleep 3
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-login.png"
 
