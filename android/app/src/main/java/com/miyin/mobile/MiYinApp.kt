@@ -184,7 +184,7 @@ fun MiYinApp() {
     LaunchedEffect(player.isPlaying) {
         val activity = context as? Activity
         activity?.requestedOrientation = if (player.isPlaying || player.isBuffering) {
-            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            ActivityInfo.SCREEN_ORIENTATION_USER
         } else {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
