@@ -61,10 +61,16 @@ jobs:
             sleep 15
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-home.png"
 
-            adb shell input swipe 540 1900 540 700 500
-            sleep 3
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-scrolled.png"
+            adb shell input tap 880 2185
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
 
+            adb shell input tap 900 205
+            sleep 3
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-login.png"
+
+            adb shell input keyevent 4
+            sleep 2
             adb shell input tap 540 2185
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-tab.png"
@@ -86,13 +92,6 @@ jobs:
 
             adb shell input keyevent 4
             sleep 2
-            adb shell input tap 880 2185
-            sleep 4
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
-
-            adb shell input tap 900 205
-            sleep 3
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-login.png"
 
             adb logcat -d -t 1800 > "$GITHUB_WORKSPACE/logcat.txt"
 
