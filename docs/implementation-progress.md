@@ -121,3 +121,5 @@
 - Windows Actions 统一为依赖还原、播放/歌词逻辑检查、自包含发布、资源完整性检查、ZIP 打包和上传；新提交取消同分支未完成构建，任务上限 20 分钟。
 - 下载产物统一命名 `MiYin-Windows-x64`，只含客户端 ZIP 与 SHA-256 文件，避免散装运行库；ZIP 内 `build-info.json` 记录提交与构建链接，产物保留 14 天，已压缩内容不重复压缩。
 - 校验：Actions 配置检查通过；Web / Server 类型检查及构建通过；服务端 31 项、Web 播放模式 5 项测试通过；Windows 编译零警告零错误及纯逻辑回归通过；Android Kotlin 编译及单元测试通过。
+
+- 云端首轮暴露还原缺少自包含运行库的问题，已将 restore 与 publish 的 Windows x64 / Release / SelfContained 参数对齐；Windows 工作流更新官方 Actions 版本以移除 Node 20 弃用提示。

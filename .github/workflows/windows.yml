@@ -28,15 +28,21 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
 
       - name: Restore dependencies
-        run: dotnet restore $env:PROJECT
+        run: >-
+          dotnet restore $env:PROJECT
+          -r win-x64
+          -p:Platform=x64
+          -p:Configuration=Release
+          -p:SelfContained=true
+          -p:WindowsAppSDKSelfContained=true
 
       - name: Check playback and lyrics behavior
         run: dotnet run --project desktop-winui/tests/PlaybackOrder.Tests -c Release
@@ -92,7 +98,7 @@ jobs:
           "- SHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: |
