@@ -44,7 +44,11 @@ jobs:
 
       - name: Download APK
         run: |
-          curl -fL --retry 3 -o "$GITHUB_WORKSPACE/app-debug.apk" "https://github.com/poouo/MiyinMusic/releases/download/android-latest/app-debug.apk"
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o "$GITHUB_WORKSPACE/app-debug.apk" "https://github.com/poouo/MiyinMusic/releases/download/android-latest/app-debug.apk" && break
+            sleep 5
+          done
+          test -s "$GITHUB_WORKSPACE/app-debug.apk"
 
       - name: Launch emulator and capture
         uses: reactivecircus/android-emulator-runner@v2
