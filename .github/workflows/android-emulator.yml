@@ -56,8 +56,11 @@ jobs:
           disable-animations: true
           script: |
             adb install -r "$GITHUB_WORKSPACE/app-debug.apk"
+            adb shell am force-stop com.google.android.apps.nexuslauncher || true
             adb shell am start -W -n com.miyin.mobile/.MainActivity
             sleep 15
+            adb shell input tap 360 1130 || true
+            sleep 2
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-home.png"
 
             adb shell input swipe 540 1900 540 700 500
@@ -83,6 +86,8 @@ jobs:
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now.png"
 
+            adb shell input keyevent 4
+            sleep 2
             adb shell input tap 880 2185
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
