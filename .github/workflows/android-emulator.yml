@@ -59,13 +59,35 @@ jobs:
             adb shell am start -W -n com.miyin.mobile/.MainActivity
             sleep 15
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-home.png"
+
             adb shell input swipe 540 1900 540 700 500
             sleep 3
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-scrolled.png"
-            adb shell input tap 880 2150
-            sleep 5
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search.png"
-            adb logcat -d -t 1200 > "$GITHUB_WORKSPACE/logcat.txt"
+
+            adb shell input tap 540 2185
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-tab.png"
+
+            adb shell input tap 540 260
+            sleep 1
+            adb shell input text "love"
+            adb shell input keyevent 66
+            sleep 8
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-results.png"
+
+            adb shell input tap 540 560
+            sleep 9
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-mini.png"
+
+            adb shell input tap 540 1960
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now.png"
+
+            adb shell input tap 880 2185
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
+
+            adb logcat -d -t 1800 > "$GITHUB_WORKSPACE/logcat.txt"
 
       - name: Publish smoke artifacts
         if: always()
@@ -78,5 +100,9 @@ jobs:
           files: |
             screenshot-home.png
             screenshot-scrolled.png
-            screenshot-search.png
+            screenshot-search-tab.png
+            screenshot-search-results.png
+            screenshot-mini.png
+            screenshot-now.png
+            screenshot-library.png
             logcat.txt
