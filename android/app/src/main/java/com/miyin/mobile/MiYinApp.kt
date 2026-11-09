@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -135,6 +136,7 @@ fun MiYinApp() {
 
     fun playSongs(songs: List<Song>, index: Int) {
         if (songs.isEmpty()) return
+        showNowPlaying = true
         player.play(songs, index)
         scope.launch {
             delay(600)
@@ -311,7 +313,7 @@ fun MiYinApp() {
                 }
             }
 
-            Box(Modifier.align(Alignment.BottomCenter)) {
+            Box(Modifier.align(Alignment.BottomCenter).zIndex(2f)) {
                 BottomArea(
                     backdrop = backdrop,
                     player = player,
@@ -330,7 +332,9 @@ fun MiYinApp() {
                 visible = showNowPlaying,
                 enter = fadeIn(tween(220)) + slideInVertically(tween(300)) { it },
                 exit = fadeOut(tween(160)) + slideOutVertically(tween(260)) { it },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(3f)
             ) {
                 NowPlayingScreen(
                     api = api,
@@ -374,17 +378,21 @@ fun MiYinApp() {
                 )
             }
 
-            toast?.let {
+            AnimatedVisibility(
+                visible = toast != null,
+                enter = fadeIn(tween(160)) + slideInVertically(tween(200)) { -it },
+                exit = fadeOut(tween(120)) + slideOutVertically(tween(160)) { -it },
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
                 Box(
                     Modifier
-                        .align(Alignment.TopCenter)
                         .statusBarsPadding()
                         .padding(top = 12.dp)
                         .clip(RoundedCornerShape(50))
                         .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
                         .padding(horizontal = 18.dp, vertical = 10.dp)
                 ) {
-                    Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
+                    Text(toast.orEmpty(), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

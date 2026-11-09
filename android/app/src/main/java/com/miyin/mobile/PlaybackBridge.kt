@@ -29,6 +29,17 @@ class MiYinSessionPlayer(
         return super.isCommandAvailable(command)
     }
 
+    override fun getAvailableCommands(): Player.Commands {
+        val commands = super.getAvailableCommands()
+        if (!hasQueue()) return commands
+        return commands.buildUpon()
+            .add(COMMAND_SEEK_TO_NEXT)
+            .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            .add(COMMAND_SEEK_TO_PREVIOUS)
+            .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .build()
+    }
+
     override fun hasNextMediaItem(): Boolean = hasQueue()
     override fun hasPreviousMediaItem(): Boolean = hasQueue()
     override fun seekToNext() = onNext()
