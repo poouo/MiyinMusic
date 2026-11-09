@@ -14,6 +14,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: { input: { player: 'index.html', admin: 'admin/index.html' } },
     sourcemap: false,
     chunkSizeWarningLimit: 900,
   },

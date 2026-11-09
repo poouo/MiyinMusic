@@ -29,6 +29,13 @@ public sealed class AppSettings
     public bool MinimizeToTray { get; set; } = false;
     public string Repeat { get; set; } = "all";
     public bool Shuffle { get; set; }
+    public bool DesktopLyrics { get; set; }
+    public string LyricStyle { get; set; } = "emerald";
+    public int LyricFontSize { get; set; } = 36;
+    public bool LyricDoubleLine { get; set; } = true;
+    public bool LyricLocked { get; set; }
+    public int? LyricX { get; set; }
+    public int? LyricY { get; set; }
     public WindowPlacement Window { get; set; } = new();
 }
 

@@ -284,3 +284,11 @@ export function songKey(song: Pick<Song, 'platform' | 'songmid'>): string {
 export function sameSong(a: Song | null, b: Song | null): boolean {
   return !!a && !!b && a.platform === b.platform && a.songmid === b.songmid
 }
+export interface AdminPlaylistSummary {
+  id: string
+  name: string
+  description: string
+  createdAt: number
+  updatedAt: number
+  songCount: number
+}

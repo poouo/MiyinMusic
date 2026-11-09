@@ -6,6 +6,10 @@ data/
 .scratch/
 .env
 .env.local
+android/.gradle/
+android/.kotlin/
+android/**/build/
+android/local.properties
 
 # Windows client build outputs
 desktop-winui/**/bin/

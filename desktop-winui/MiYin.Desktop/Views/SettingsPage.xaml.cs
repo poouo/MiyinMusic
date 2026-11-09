@@ -82,11 +82,17 @@ public sealed partial class SettingsPage : Page
         AutoCacheSwitch.IsOn = CacheService.Instance.AutoCache;
         CloseToTraySwitch.IsOn = ConfigService.Current.CloseToTray;
         MinimizeToTraySwitch.IsOn = ConfigService.Current.MinimizeToTray;
+        DesktopLyricsSwitch.IsOn = ConfigService.Current.DesktopLyrics;
+        LyricDoubleSwitch.IsOn = ConfigService.Current.LyricDoubleLine;
+        LyricLockSwitch.IsOn = ConfigService.Current.LyricLocked;
+        LyricSizeSlider.Value = Math.Clamp(ConfigService.Current.LyricFontSize, 24, 60);
+        foreach (ComboBoxItem style in LyricStyleBox.Items)
+            if ((string)style.Tag == ConfigService.Current.LyricStyle) LyricStyleBox.SelectedItem = style;
+        if (LyricStyleBox.SelectedIndex < 0) LyricStyleBox.SelectedIndex = 0;
         UpdateCacheUsage();
 
         DownloadPathBox.Text = ConfigService.Current.DownloadDir;
         AboutText.Text = $"觅音 Windows 客户端 v{AppInfo.Version}\n" +
-                         $"API：{ConfigService.Current.ApiBase}\n" +
                          $"配置目录：{AppInfo.DataDirectory}\n" +
                          $"缓存目录：{CacheService.Instance.DirectoryPath}";
         _ready = true;
@@ -105,6 +111,28 @@ public sealed partial class SettingsPage : Page
     {
         var stats = CacheService.Instance.Stats();
         CacheUsageText.Text = $"已缓存 {stats.count} 首 · {FormatText.Bytes(stats.bytes)} / {FormatText.Bytes(stats.maxBytes)}";
+    }
+
+    private void Lyrics_Changed(object sender, RoutedEventArgs e) => SaveLyrics();
+    private void Lyrics_SelectionChanged(object sender, SelectionChangedEventArgs e) => SaveLyrics();
+    private void LyricsSize_Changed(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e) => SaveLyrics();
+    private void SaveLyrics()
+    {
+        if (!_ready) return;
+        var config = ConfigService.Current;
+        config.DesktopLyrics = DesktopLyricsSwitch.IsOn;
+        config.LyricDoubleLine = LyricDoubleSwitch.IsOn;
+        config.LyricLocked = LyricLockSwitch.IsOn;
+        config.LyricFontSize = (int)LyricSizeSlider.Value;
+        config.LyricStyle = (LyricStyleBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "emerald";
+        ConfigService.Save();
+        DesktopLyrics.Instance.Refresh();
+    }
+    private void ResetLyrics_Click(object sender, RoutedEventArgs e)
+    {
+        ConfigService.Current.LyricX = null; ConfigService.Current.LyricY = null;
+        ConfigService.Current.LyricLocked = false;
+        ConfigService.Save(); DesktopLyrics.Instance.Dispose(); DesktopLyrics.Instance.Initialize(); Refresh();
     }
 
     private async void Login_Click(object sender, RoutedEventArgs e)
@@ -221,7 +249,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            Process.Start(new ProcessStartInfo(ApiService.BaseUrl + "/#/admin") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(ApiService.BaseUrl + "/admin/") { UseShellExecute = true });
         }
         catch
         {

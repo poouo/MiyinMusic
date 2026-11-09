@@ -2,21 +2,26 @@ package com.miyin.mobile
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,18 +52,24 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +77,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlin.math.max
+import kotlin.math.abs
+import kotlinx.coroutines.delay
+import androidx.compose.material3.HorizontalDivider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +92,8 @@ fun NowPlayingScreen(
 ) {
     val song = player.current
     var showQueue by remember { mutableStateOf(false) }
+    var showQuality by remember { mutableStateOf(false) }
+    var lyricsExpanded by rememberSaveable { mutableStateOf(false) }
     val background = MaterialTheme.colorScheme.background
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -89,7 +105,7 @@ fun NowPlayingScreen(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alpha = 0.28f,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().blur(36.dp)
             )
         }
         Box(
@@ -118,6 +134,14 @@ fun NowPlayingScreen(
                 onBack = onBack,
                 onQueue = { showQueue = true }
             )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { lyricsExpanded = !lyricsExpanded }) {
+                    Text(if (lyricsExpanded) "封面" else "展开歌词", style = MaterialTheme.typography.labelMedium)
+                }
+                TextButton(onClick = { showQuality = true }) {
+                    Text("${player.qualityLabel.ifBlank { "音质" }} ⌄", style = MaterialTheme.typography.labelMedium)
+                }
+            }
 
             if (landscape) {
                 Row(
@@ -166,6 +190,10 @@ fun NowPlayingScreen(
                     }
                 }
             } else {
+                AnimatedVisibility(visible = !lyricsExpanded,
+                    enter = fadeIn(tween(240)) + expandVertically(tween(320)),
+                    exit = fadeOut(tween(160)) + shrinkVertically(tween(280))) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 CoverImage(
                     url = song?.img,
                     api = api,
@@ -176,6 +204,8 @@ fun NowPlayingScreen(
                         .padding(top = 14.dp),
                     corner = 30
                 )
+                }
+                }
                 SongTitle(
                     song = song,
                     isFavorite = isFavorite,
@@ -196,6 +226,8 @@ fun NowPlayingScreen(
         }
     }
 
+    if (showQuality) QualitySheet(player) { showQuality = false }
+
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }) {
             Text(
@@ -206,6 +238,7 @@ fun NowPlayingScreen(
             )
             LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                 itemsIndexed(player.queue, key = { _, s -> s.key }) { index, item ->
+                    ListEntrance(index) {
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -241,6 +274,7 @@ fun NowPlayingScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
                     }
                 }
             }
@@ -335,15 +369,37 @@ private fun LyricsPane(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-
-    LaunchedEffect(player.activeLyricIndex) {
-        val index = player.activeLyricIndex
-        if (index >= 0 && index < player.lyrics.size) {
-            listState.animateScrollToItem(index)
+    val dragging by listState.interactionSource.collectIsDraggedAsState()
+    var scrubbing by remember(player.current?.key) { mutableStateOf(false) }
+    val previewIndex by remember {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+            layout.visibleItemsInfo.minByOrNull { abs(it.offset + it.size / 2 - center) }?.index ?: -1
+        }
+    }
+    LaunchedEffect(dragging) { if (dragging) scrubbing = true }
+    // Wait for both the finger and fling to settle; playback ticks must not steal the scroll.
+    LaunchedEffect(listState.isScrollInProgress, scrubbing, dragging) {
+        if (scrubbing && !dragging && !listState.isScrollInProgress) {
+            delay(180)
+            player.lyrics.getOrNull(previewIndex)?.let { player.seekTo(it.timeMs) }
+            scrubbing = false
+        }
+    }
+    val density = LocalDensity.current
+    LaunchedEffect(player.activeLyricIndex, scrubbing, player.current?.key, player.lyrics) {
+        val index = player.activeLyricIndex.coerceAtLeast(0)
+        if (!scrubbing && index in player.lyrics.indices) {
+            // Symmetric content padding puts the chosen lyric at the viewport's center.
+            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+            val halfHeight = item?.size?.div(2) ?: with(density) { 24.dp.roundToPx() }
+            listState.animateScrollToItem(index, halfHeight)
         }
     }
 
-    Box(modifier) {
+    BoxWithConstraints(modifier) {
+        val centerPadding = maxHeight / 2
         if (player.lyrics.isEmpty()) {
             Text(
                 if (player.isBuffering) "歌词加载中…" else "暂无歌词",
@@ -355,11 +411,11 @@ private fun LyricsPane(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                contentPadding = PaddingValues(vertical = centerPadding),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 itemsIndexed(player.lyrics) { index, line ->
-                    val active = index == player.activeLyricIndex
+                    val active = index == if (scrubbing) previewIndex else player.activeLyricIndex
                     val lineColor by animateColorAsState(
                         targetValue = if (active) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
@@ -367,7 +423,7 @@ private fun LyricsPane(
                         label = "lyric-color"
                     )
                     val lineSize by animateFloatAsState(
-                        targetValue = if (active) 19f else 14f,
+                        targetValue = if (active) 20f else 16f,
                         animationSpec = tween(240),
                         label = "lyric-size"
                     )
@@ -378,13 +434,16 @@ private fun LyricsPane(
                         label = "translation-color"
                     )
                     Column(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                            .clickable { player.seekTo(line.timeMs) }
+                            .padding(horizontal = 28.dp, vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = line.text,
                             style = MaterialTheme.typography.bodyLarge,
-                            fontSize = lineSize.sp,
+                            fontSize = 20.sp,
+                            modifier = Modifier.graphicsLayer { scaleX = lineSize / 20f; scaleY = lineSize / 20f },
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                             color = lineColor,
                             textAlign = TextAlign.Center
@@ -401,12 +460,26 @@ private fun LyricsPane(
                     }
                 }
             }
+            if (scrubbing) {
+                Row(Modifier.align(Alignment.Center).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                    Text(formatDuration(player.lyrics.getOrNull(previewIndex)?.timeMs ?: 0),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp))
+                }
+                Text("松手跳转到这句", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp))
+            }
         }
     }
 }
 
 @Composable
 private fun ProgressControls(player: PlayerController) {
+    var pendingPosition by remember(player.current?.key) { mutableStateOf<Float?>(null) }
     player.errorMessage?.let {
         Text(
             it,
@@ -421,8 +494,12 @@ private fun ProgressControls(player: PlayerController) {
 
     val duration = max(player.durationMs, 1L)
     Slider(
-        value = player.positionMs.coerceIn(0L, duration).toFloat(),
-        onValueChange = { player.seekTo(it.toLong()) },
+        value = (pendingPosition ?: player.positionMs.toFloat()).coerceIn(0f, duration.toFloat()),
+        onValueChange = { pendingPosition = it },
+        onValueChangeFinished = {
+            pendingPosition?.let { player.seekTo(it.toLong()) }
+            pendingPosition = null
+        },
         valueRange = 0f..duration.toFloat(),
         colors = SliderDefaults.colors(
             thumbColor = MaterialTheme.colorScheme.primary,
@@ -432,7 +509,7 @@ private fun ProgressControls(player: PlayerController) {
         modifier = Modifier.fillMaxWidth()
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(formatDuration(player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(formatDuration(pendingPosition?.toLong() ?: player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(formatDuration(player.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 

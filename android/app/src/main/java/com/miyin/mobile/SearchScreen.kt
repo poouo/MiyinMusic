@@ -73,7 +73,7 @@ fun SearchScreen(
             error = null
             runCatching { api.search(platform, text) }
                 .onSuccess { result = it }
-                .onFailure { error = it.message ?: "搜索失败" }
+                .onFailure { error = it.userMessage("搜索失败，请稍后重试") }
             loading = false
         }
     }
@@ -163,7 +163,7 @@ fun SearchScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)
                 )
-                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
                     itemsIndexed(result!!.list, key = { _, song -> song.key }) { index, song ->
                         SongRow(
                             song = song,

@@ -1,5 +1,7 @@
 import type {
   AdminOverview,
+  AdminPlaylistSummary,
+  Playlist,
   AdminUser,
   AdminUserList,
   AppConfig,
@@ -135,6 +137,14 @@ export const api = {
 
   // ---- 管理后台（仅管理员；其他人一律 404） ----
   admin: {
+    userPlaylists: (userId: string) => request<{ user: AdminUser; playlists: AdminPlaylistSummary[] }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists'),
+    playlist: (userId: string, id: string) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id)),
+    createPlaylist: (userId: string, body: { name: string; description: string }) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists', { method: 'POST', body: JSON.stringify(body) }),
+    updatePlaylist: (userId: string, id: string, body: { name: string; description: string }) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) }),
+    deletePlaylist: (userId: string, id: string) => request<{ ok: boolean }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id), { method: 'DELETE' }),
+    copyPlaylist: (userId: string, id: string, targetUserId: string, name: string) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id) + '/copy', { method: 'POST', body: JSON.stringify({ targetUserId, name }) }),
+    removePlaylistSong: (userId: string, id: string, key: string) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id) + '/songs/' + encodeURIComponent(key), { method: 'DELETE' }),
+
     overview: () => request<AdminOverview>('/api/admin/overview'),
     system: () =>
       request<{

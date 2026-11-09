@@ -75,7 +75,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
               管理用户、音源与下载权限
             </div>
           </div>
-          <button className="btn btn--sm btn--primary" onClick={() => navigate('/admin')}>
+          <button className="btn btn--sm btn--primary" onClick={() => window.location.assign('/admin/')}>
             进入后台
           </button>
         </div>

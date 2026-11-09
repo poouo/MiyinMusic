@@ -120,7 +120,8 @@ export function lookup(song: Song, allowed: Quality[]): CachedAudio | null {
   if (!getAppConfig().cache.enabled) return null
   const rows = sql('SELECT * FROM audio_cache WHERE song_key = ?').all(songKey(song)) as unknown as CacheRow[]
   const matches = rows.filter((row) => allowed.includes(row.quality as Quality))
-  matches.sort((a, b) => (QUALITY_RANK[b.quality as Quality] ?? 0) - (QUALITY_RANK[a.quality as Quality] ?? 0))
+  // The caller's preference order also applies when serving cached files.
+  matches.sort((a, b) => allowed.indexOf(a.quality as Quality) - allowed.indexOf(b.quality as Quality))
   for (const row of matches) {
     if (!fileExists(row.file_name)) {
       deleteRow(row.cache_key)

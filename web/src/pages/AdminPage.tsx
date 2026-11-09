@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { navigate } from '../lib/router'
+import { AdminPlaylists } from '../components/AdminPlaylists'
 import { formatCount, initials, timeAgo } from '../lib/format'
 import {
   AUDIENCE_NAMES,
@@ -46,11 +46,12 @@ import {
   UsersIcon,
 } from '../components/Icons'
 
-type Section = 'overview' | 'users' | 'sources' | 'site' | 'download' | 'cache' | 'audit'
+type Section = 'playlists' | 'overview' | 'users' | 'sources' | 'site' | 'download' | 'cache' | 'audit'
 
 const SECTIONS: { id: Section; label: string; icon: typeof UsersIcon }[] = [
   { id: 'overview', label: '概览', icon: ActivityIcon },
   { id: 'users', label: '用户管理', icon: UsersIcon },
+  { id: 'playlists', label: '歌单管理', icon: FileTextIcon },
   { id: 'sources', label: '音源', icon: ServerIcon },
   { id: 'site', label: '站点设置', icon: LockIcon },
   { id: 'download', label: '下载权限', icon: DownloadIcon },
@@ -70,6 +71,12 @@ const AUDIT_LABELS: Record<string, string> = {
   'admin.user.status': '后台启停用户',
   'admin.user.rename': '后台修改昵称',
   'admin.user.delete': '后台删除用户',
+  'admin.playlist.create': '新建用户歌单',
+  'admin.playlist.update': '修改用户歌单',
+  'admin.playlist.delete': '删除用户歌单',
+  'admin.playlist.copy': '复制用户歌单',
+  'admin.playlist.removeSong': '移除歌单歌曲',
+  'admin.user.logout': '强制退出用户',
   'admin.config': '后台修改站点配置',
   'admin.unlock': '后台解除锁定',
 }
@@ -88,7 +95,7 @@ function NotFound() {
         title="页面不存在"
         description="你访问的页面可能已经被移动或删除了。"
         action={
-          <button className="btn btn--sm" onClick={() => navigate('/')}>
+          <button className="btn btn--sm" onClick={() => window.location.assign('/')}>
             <ArrowLeftIcon size={15} /> 回到首页
           </button>
         }
@@ -99,8 +106,9 @@ function NotFound() {
 
 export function AdminPage() {
   const auth = useAuth()
-  // 非管理员（含未登录）看到的就是一个普通 404
-  if (!auth.user || auth.user.role !== 'admin') return <NotFound />
+  if (auth.loading) return <div className="admin-loading">正在验证登录状态…</div>
+  if (!auth.user) return <AdminLogin />
+  if (auth.user.role !== 'admin') return <div className="stack gap-16"><NotFound /><button className="btn" onClick={() => void auth.logout()}>切换管理员账号</button></div>
   return <AdminPanel />
 }
 
@@ -117,6 +125,7 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 function AdminPanel() {
   const auth = useAuth()
   const [section, setSection] = useState<Section>('overview')
+  const [playlistUser, setPlaylistUser] = useState<AdminUser | null>(null)
 
   return (
     <div className="fade-in admin">
@@ -128,7 +137,8 @@ function AdminPanel() {
           </h1>
           <p className="page-sub">当前管理员：{auth.user?.nickname}</p>
         </div>
-        <button className="btn btn--sm btn--ghost" onClick={() => navigate('/')}>
+        <button className="btn btn--sm btn--ghost" onClick={() => void auth.logout()}>退出后台</button>
+        <button className="btn btn--sm btn--ghost" onClick={() => window.location.assign('/')}>
           <ArrowLeftIcon size={15} /> 返回前台
         </button>
       </div>
@@ -152,7 +162,8 @@ function AdminPanel() {
 
         <div className="admin-body">
           {section === 'overview' ? <OverviewSection onJump={setSection} /> : null}
-          {section === 'users' ? <UsersSection /> : null}
+          {section === 'users' ? <UsersSection onPlaylists={user => { setPlaylistUser(user); setSection('playlists') }} /> : null}
+          {section === 'playlists' ? <AdminPlaylists initialUser={playlistUser} /> : null}
           {section === 'sources' ? <SourcesSection /> : null}
           {section === 'site' ? <SiteSection /> : null}
           {section === 'download' ? <DownloadSection /> : null}
@@ -333,7 +344,7 @@ function OverviewSection({ onJump }: { onJump: (section: Section) => void }) {
   )
 }
 
-function UsersSection() {
+function UsersSection({ onPlaylists }: { onPlaylists: (user: AdminUser) => void }) {
   const toast = useToast()
   const auth = useAuth()
   const [list, setList] = useState<AdminUserList | null>(null)
@@ -493,7 +504,7 @@ function UsersSection() {
                           {user.status === 'disabled' ? '已停用' : '正常'}
                         </span>
                       </td>
-                      <td className="num">{user.playlists}</td>
+                      <td className="num"><button className="btn btn--sm btn--ghost" onClick={() => onPlaylists(user)} title="查看用户歌单">{user.playlists} · 查看</button></td>
                       <td className="num">{user.favorites}</td>
                       <td className="faint" style={{ fontSize: 12 }}>{user.lastLoginAt ? timeAgo(user.lastLoginAt) : '从未登录'}</td>
                       <td>
@@ -1171,4 +1182,22 @@ function AuditSection() {
       </div>
     </div>
   )
+}
+function AdminLogin() {
+  const auth = useAuth()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  return <form className="admin-login glass stack gap-16" onSubmit={async event => {
+    event.preventDefault(); setBusy(true); setError('')
+    try { await auth.login(username.trim(), password); setPassword('') }
+    catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }}>
+    <ShieldIcon size={34} /><h1>觅音管理后台</h1><p className="dim">使用管理员账号登录，管理用户与音乐内容。</p>
+    <label>用户名<input className="input" autoComplete="username" required value={username} onChange={e => setUsername(e.target.value)} /></label>
+    <label>密码<input className="input" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></label>
+    {error && <p role="alert">{error}</p>}<button className="btn btn--primary" disabled={busy}>{busy ? '正在登录…' : '登录后台'}</button>
+    <a href="/" className="dim">返回音乐播放器</a>
+  </form>
 }

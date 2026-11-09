@@ -139,8 +139,8 @@ export async function getPlaylist(id: string, options: PlaylistQueryOptions = {}
   if (!provider.playlistSongs) throw new Error('不支持该平台的歌单')
 
   const detail = await remember('playlist:' + id, DETAIL_TTL, () => provider.playlistSongs!(id))
-  const offset = Math.max(0, Math.floor(options.offset ?? 0))
-  const limit = Math.min(300, Math.max(1, Math.floor(options.limit ?? 100)))
+  const offset = Number.isFinite(options.offset) ? Math.max(0, Math.floor(options.offset!)) : 0
+  const limit = Number.isFinite(options.limit) ? Math.min(300, Math.max(1, Math.floor(options.limit!))) : 100
   const songs = detail.songs.slice(offset, offset + limit)
   return {
     playlist: detail.playlist,

@@ -400,6 +400,11 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         _currentQuality = "";
         _duration = song.Interval > 0 ? TimeSpan.FromSeconds(song.Interval) : TimeSpan.Zero;
         _position = TimeSpan.Zero;
+        Lyrics.Clear();
+        _activeLyricIndex = -1;
+        OnPropertyChanged(nameof(HasLyrics));
+        OnPropertyChanged(nameof(ActiveLyricIndex));
+        OnPropertyChanged(nameof(ActiveLyric));
         NotifyCurrent();
         OnPropertyChanged(nameof(IsPlaying));
         OnPropertyChanged(nameof(ErrorMessage));

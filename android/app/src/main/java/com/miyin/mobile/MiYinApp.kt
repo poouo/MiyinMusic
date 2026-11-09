@@ -5,8 +5,6 @@ import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -34,18 +32,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -54,16 +49,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,36 +66,52 @@ import androidx.core.view.WindowCompat
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class HomeData(
-    val playlists: List<PlaylistInfo>,
-    val charts: List<ChartInfo>,
-    val songs: List<Song>,
-    val singers: List<SingerInfo>
+    val playlists: List<PlaylistInfo> = emptyList(),
+    val charts: List<ChartInfo> = emptyList(),
+    val songs: List<Song> = emptyList(),
+    val singers: List<SingerInfo> = emptyList()
 )
+
+private data class ScreenRoute(val tab: Int, val playlist: PlaylistInfo?, val chart: ChartInfo?, val allCharts: Boolean) {
+    val key: String get() = playlist?.let { "playlist:${it.id}" } ?: chart?.let { "chart:${it.id}" } ?: if (allCharts) "charts" else "tab:$tab"
+}
 
 @Composable
 fun MiYinApp() {
     val context = LocalContext.current
     val prefs = remember { AppPrefs(context) }
     val api = remember { ApiClient(context) }
-    val player = remember { PlayerController(context, api) }
+    val player = remember { PlaybackEngine.controller(context, api) }
     val scope = rememberCoroutineScope()
     val view = LocalView.current
+    val density = LocalDensity.current
+    val savedScreens = rememberSaveableStateHolder()
+    val cachedSession = remember { api.cache.session() }
+    var chromePadding by remember { mutableStateOf(96.dp) }
+    var homeLoadJob by remember { mutableStateOf<Job?>(null) }
 
     var themeMode by remember { mutableStateOf(prefs.themeMode) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    var user by remember { mutableStateOf<User?>(null) }
-    var library by remember { mutableStateOf(LibraryData()) }
-    var homeData by remember { mutableStateOf<HomeData?>(null) }
+    var user by remember { mutableStateOf(cachedSession.user) }
+    var library by remember { mutableStateOf(cachedSession.library) }
+    var homeData by remember { mutableStateOf(if (prefs.showCachedHome) api.cache.home() else null) }
     var homeLoading by remember { mutableStateOf(true) }
     var homeError by remember { mutableStateOf<String?>(null) }
     var playlistDetail by remember { mutableStateOf<PlaylistInfo?>(null) }
     var chartDetail by remember { mutableStateOf<ChartInfo?>(null) }
+    var showCharts by rememberSaveable { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     val dark = when (themeMode) {
@@ -110,28 +121,32 @@ fun MiYinApp() {
     }
 
     fun reloadHome() {
-        scope.launch {
+        if (homeLoadJob?.isActive == true) return
+        homeLoadJob = scope.launch {
             homeLoading = true
             homeError = null
-            runCatching {
-                HomeData(
-                    playlists = api.discoverPlaylists(12),
-                    charts = api.charts(),
-                    songs = api.newSongs(12),
-                    singers = api.singers(12)
-                )
-            }.onSuccess {
-                homeData = it
-            }.onFailure {
-                homeError = it.message ?: "内容加载失败"
+            val failures = mutableListOf<String>()
+            fun failed(e: Throwable) {
+                if (e is CancellationException) throw e
+                failures += e.userMessage("内容加载失败")
             }
+            coroutineScope {
+                launch { runCatching { api.discoverPlaylists(12) }.onSuccess {
+                    homeData = (homeData ?: HomeData()).copy(playlists = it)
+                }.onFailure(::failed) }
+                launch { runCatching { api.charts() }.onSuccess {
+                    homeData = (homeData ?: HomeData()).copy(charts = it)
+                }.onFailure(::failed) }
+                launch { runCatching { api.newSongs(12) }.onSuccess {
+                    homeData = (homeData ?: HomeData()).copy(songs = it)
+                }.onFailure(::failed) }
+                launch { runCatching { api.singers(12) }.onSuccess {
+                    homeData = (homeData ?: HomeData()).copy(singers = it)
+                }.onFailure(::failed) }
+            }
+            homeError = failures.firstOrNull()
+            homeData?.let { api.cache.saveHome(it) }
             homeLoading = false
-        }
-    }
-
-    fun reloadLibrary() {
-        scope.launch {
-            library = runCatching { api.library() }.getOrDefault(library)
         }
     }
 
@@ -157,19 +172,36 @@ fun MiYinApp() {
             }.onSuccess {
                 library = it
             }.onFailure {
-                toast = it.message ?: "操作失败"
+                toast = it.userMessage("操作失败，请重试")
             }
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { player.release() }
+    LaunchedEffect(Unit) {
+        AppCache.sessionUpdates.collect { snapshot ->
+            if (snapshot != null) {
+                user = snapshot.user
+                library = snapshot.library
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
         reloadHome()
-        user = runCatching { api.me() }.getOrNull()
-        library = runCatching { api.library() }.getOrDefault(LibraryData())
+        try {
+            val refreshedUser = api.me()
+            if (refreshedUser?.id != user?.id) library = LibraryData()
+            user = refreshedUser
+            library = runCatching { api.library() }.getOrDefault(library)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Retain the last visible session during a network failure.
+        }
+    }
+
+    LaunchedEffect(user, library) {
+        api.cache.saveSession(user, library)
     }
 
     LaunchedEffect(toast) {
@@ -194,7 +226,7 @@ fun MiYinApp() {
     }
 
     BackHandler(
-        enabled = showNowPlaying || showLogin || showSettings || playlistDetail != null || chartDetail != null
+        enabled = showNowPlaying || showLogin || showSettings || playlistDetail != null || chartDetail != null || showCharts
     ) {
         when {
             showNowPlaying -> showNowPlaying = false
@@ -202,6 +234,7 @@ fun MiYinApp() {
             showSettings -> showSettings = false
             playlistDetail != null -> playlistDetail = null
             chartDetail != null -> chartDetail = null
+            showCharts -> showCharts = false
         }
     }
 
@@ -214,6 +247,7 @@ fun MiYinApp() {
         }
 
         val backdrop = rememberLayerBackdrop()
+        val wallpaperBackdrop = rememberLayerBackdrop()
         val favorites = library.favorites.map { it.song.key }.toSet()
 
         Box(Modifier.fillMaxSize()) {
@@ -222,38 +256,38 @@ fun MiYinApp() {
                     .fillMaxSize()
                     .layerBackdrop(backdrop)
             ) {
-                AppBackground(api, player.current?.img, dark)
-                val screenKey = when {
-                    playlistDetail != null -> "playlist:" + playlistDetail!!.id
-                    chartDetail != null -> "chart:" + chartDetail!!.id
-                    else -> "tab:" + tab
+                // Header controls sample only wallpaper, never the layer that contains themselves.
+                Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
+                    AppBackground(api, player.current?.img, dark)
                 }
+                val route = ScreenRoute(tab, playlistDetail, chartDetail, showCharts)
                 Box(
                     Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
-                        .padding(bottom = if (player.current != null) 230.dp else 150.dp)
                 ) {
+                    CompositionLocalProvider(LocalChromePadding provides chromePadding) {
                     AnimatedContent(
-                        targetState = screenKey,
+                        targetState = route,
                         transitionSpec = {
-                            val enter = fadeIn(tween(230)) + slideInHorizontally(tween(280)) { width ->
-                                if (targetState.startsWith("tab:")) width / 10 else width / 5
-                            }
-                            val exit = fadeOut(tween(150)) + slideOutHorizontally(tween(210)) { width ->
-                                if (targetState.startsWith("tab:")) -width / 14 else -width / 7
-                            }
+                            val opening = targetState.playlist != null || targetState.chart != null ||
+                                (targetState.allCharts && !initialState.allCharts)
+                            val direction = if (opening || targetState.tab > initialState.tab) 1 else -1
+                            val enter = fadeIn(tween(260, 40)) + slideInHorizontally(tween(360)) { it / 7 * direction }
+                            val exit = fadeOut(tween(160)) + slideOutHorizontally(tween(280)) { -it / 12 * direction }
                             enter togetherWith exit
                         },
                         label = "screen",
                         modifier = Modifier.fillMaxSize()
-                    ) { _ ->
-                        val playlist = playlistDetail
-                        val chart = chartDetail
+                    ) { currentRoute ->
+                        savedScreens.SaveableStateProvider(currentRoute.key) {
+                        val playlist = currentRoute.playlist
+                        val chart = currentRoute.chart
                         when {
                             playlist != null -> PlaylistDetailScreen(
                                 api = api,
                                 playlist = playlist,
+                                localSongs = library.playlists.find { "local:${it.id}" == playlist.id }?.songs,
                                 favorites = favorites,
                                 onBack = { playlistDetail = null },
                                 onPlay = { songs, index -> playSongs(songs, index) },
@@ -269,8 +303,12 @@ fun MiYinApp() {
                                 onFavorite = ::toggleFavorite
                             )
 
-                            tab == 0 -> HomeScreen(
+                            currentRoute.allCharts -> ChartsScreen(api, homeData?.charts.orEmpty(),
+                                onBack = { showCharts = false }, onChart = { chartDetail = it })
+
+                            currentRoute.tab == 0 -> HomeScreen(
                                 api = api,
+                                backdrop = wallpaperBackdrop,
                                 data = homeData,
                                 loading = homeLoading,
                                 error = homeError,
@@ -280,13 +318,14 @@ fun MiYinApp() {
                                 onRetry = ::reloadHome,
                                 onPlaylist = { playlistDetail = it },
                                 onChart = { chartDetail = it },
+                                onAllCharts = { showCharts = true },
                                 onPlay = { songs, index -> playSongs(songs, index) },
                                 onSearch = { tab = 1 },
                                 onSettings = { showSettings = true },
                                 onLogin = { showLogin = true }
                             )
 
-                            tab == 1 -> SearchScreen(
+                            currentRoute.tab == 1 -> SearchScreen(
                                 api = api,
                                 favorites = favorites,
                                 onPlay = { songs, index -> playSongs(songs, index) },
@@ -301,34 +340,30 @@ fun MiYinApp() {
                                 onPlay = { songs, index -> playSongs(songs, index) },
                                 onFavorite = ::toggleFavorite,
                                 onLogin = { showLogin = true },
+                                onSettings = { showSettings = true },
+                                onImport = { if (user == null) showLogin = true else showImport = true },
+                                onPlaylist = { playlist ->
+                                    playlistDetail = PlaylistInfo(id = "local:${playlist.id}", name = playlist.name,
+                                        description = playlist.description, trackCount = playlist.songs.size)
+                                },
                                 onLogout = {
                                     scope.launch {
                                         runCatching { api.logout() }
                                         user = null
-                                        library = runCatching { api.library() }.getOrDefault(LibraryData())
+                                        library = LibraryData()
                                     }
                                 }
                             )
                         }
                     }
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(30.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        Color.Transparent,
-                                        MaterialTheme.colorScheme.background.copy(alpha = 0.92f)
-                                    )
-                                )
-                            )
-                    )
+                        }
+                    }
                 }
             }
 
-            Box(Modifier.align(Alignment.BottomCenter).zIndex(2f)) {
+            Box(Modifier.align(Alignment.BottomCenter).zIndex(2f).onSizeChanged {
+                chromePadding = with(density) { it.height.toDp() } + 12.dp
+            }) {
                 BottomArea(
                     backdrop = backdrop,
                     player = player,
@@ -338,6 +373,7 @@ fun MiYinApp() {
                         tab = it
                         playlistDetail = null
                         chartDetail = null
+                        showCharts = false
                     },
                     onOpenNowPlaying = { showNowPlaying = true }
                 )
@@ -365,6 +401,7 @@ fun MiYinApp() {
                     api = api,
                     onClose = { showLogin = false },
                     onSuccess = { loggedIn ->
+                        library = LibraryData()
                         user = loggedIn
                         showLogin = false
                         scope.launch {
@@ -374,23 +411,36 @@ fun MiYinApp() {
                 )
             }
 
-            if (showSettings) {
-                SettingsDialog(
-                    api = api,
+            AnimatedVisibility(
+                visible = showSettings,
+                enter = fadeIn(tween(240)) + slideInHorizontally(tween(340)) { it / 6 },
+                exit = fadeOut(tween(160)) + slideOutHorizontally(tween(280)) { it / 6 },
+                modifier = Modifier.fillMaxSize().zIndex(4f)
+            ) {
+                SettingsScreen(
                     user = user,
                     themeMode = themeMode,
                     onTheme = { themeMode = it },
+                    onQuality = { player.setDefaultQuality(it) },
                     onLogin = { showLogin = true; showSettings = false },
                     onLogout = {
                         scope.launch {
                             runCatching { api.logout() }
                             user = null
-                            library = runCatching { api.library() }.getOrDefault(LibraryData())
+                            library = LibraryData()
                             showSettings = false
                         }
                     },
-                    onClose = { showSettings = false }
+                    onBack = { showSettings = false }
                 )
+            }
+
+            if (showImport) {
+                ImportPlaylistDialog(api, onClose = { showImport = false }, onImported = {
+                    library = it
+                    showImport = false
+                    toast = "已导入到我的歌单"
+                })
             }
 
             AnimatedVisibility(
@@ -427,7 +477,7 @@ private fun BottomArea(
         Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         val song = player.current
@@ -508,68 +558,7 @@ private fun BottomArea(
             }
         }
 
-        GlassPanel(
-            backdrop = backdrop,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(26.dp),
-            tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.30f)
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                NavItem("发现", Icons.Rounded.Explore, selectedTab == 0) { onTab(0) }
-                NavItem("搜索", Icons.Rounded.Search, selectedTab == 1) { onTab(1) }
-                NavItem("我的", Icons.Rounded.Person, selectedTab == 2) { onTab(2) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NavItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
-    val color by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(220),
-        label = "nav-color"
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1.10f else 1f,
-        animationSpec = tween(220),
-        label = "nav-scale"
-    )
-    val pill by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-        animationSpec = tween(220),
-        label = "nav-pill"
-    )
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = color,
-            modifier = Modifier
-                .size(22.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-        )
+        LiquidNavigation(backdrop, selectedTab, onTab)
     }
 }
 

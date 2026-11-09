@@ -28,8 +28,8 @@ export interface ListUsersOptions {
 
 export function listUsers(options: ListUsersOptions = {}) {
   const db = getDb()
-  const page = Math.max(1, Math.floor(options.page ?? 1))
-  const limit = Math.min(100, Math.max(1, Math.floor(options.limit ?? 20)))
+  const page = Math.max(1, Math.floor(Number.isFinite(options.page) ? options.page! : 1))
+  const limit = Math.min(100, Math.max(1, Math.floor(Number.isFinite(options.limit) ? options.limit! : 20)))
   const offset = (page - 1) * limit
   const clauses: string[] = []
   const args: (string | number)[] = []
@@ -197,4 +197,12 @@ export function overview() {
   const dbStats = databaseStats()
 
   return { stats, series, platforms, topSingers, recentUsers, database: dbStats, generatedAt: now }
+}
+export function userPlaylists(userId: string) {
+  const user = getUserDetail(userId)
+  const playlists = getDb().prepare(`SELECT p.id, p.name, p.description, p.created_at, p.updated_at,
+    (SELECT COUNT(*) FROM playlist_songs s WHERE s.playlist_id = p.id) AS song_count
+    FROM playlists p WHERE p.user_id = ? ORDER BY p.created_at DESC`).all(userId) as Record<string, unknown>[]
+  return { user, playlists: playlists.map(p => ({ id: String(p.id), name: String(p.name),
+    description: String(p.description ?? ''), createdAt: Number(p.created_at), updatedAt: Number(p.updated_at), songCount: Number(p.song_count) })) }
 }

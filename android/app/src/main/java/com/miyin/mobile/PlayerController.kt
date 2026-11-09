@@ -12,11 +12,13 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -29,10 +31,14 @@ enum class RepeatMode { ALL, ONE, OFF }
 
 data class LyricLine(val timeMs: Long, val text: String, val translation: String = "")
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlayerController(
     context: Context,
     private val api: ApiClient
 ) {
+    private val appContext = context.applicationContext
+    var preferredQuality by mutableStateOf(AppPrefs(appContext).preferredQuality)
+        private set
     val exoPlayer: ExoPlayer = PlaybackEngine.player(context)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -60,7 +66,7 @@ class PlayerController(
 
         override fun onPlayerError(error: PlaybackException) {
             isBuffering = false
-            errorMessage = "播放失败：" + (error.message ?: "音频源不可用")
+            errorMessage = "播放失败：音频源暂不可用，请切换音质或重试"
         }
     }
 
@@ -123,12 +129,14 @@ class PlayerController(
         loadSong(queue[index])
     }
 
-    private fun loadSong(song: Song) {
+    private fun loadSong(song: Song, startPositionMs: Long = 0L, autoPlay: Boolean = true) {
         loadJob?.cancel()
         current = song
+        CarLyrics.setSong(song)
+        DesktopLyrics.setSong(song)
         errorMessage = null
         isBuffering = true
-        positionMs = 0L
+        positionMs = startPositionMs
         durationMs = song.interval * 1000L
         lyrics = emptyList()
         activeLyricIndex = -1
@@ -159,15 +167,21 @@ class PlayerController(
                     .setArtworkUri(api.imageUrl(song.img)?.toUri())
                     .build()
                 val mediaItem = MediaItem.Builder()
+                    .setMediaId(song.key)
                     .setUri(url)
+                    .setCustomCacheKey(song.key + ":" + result.quality)
                     .setMediaMetadata(metadata)
                     .build()
-                val mediaSource = ProgressiveMediaSource.Factory(sourceFactory)
+                val cachedSource = CacheDataSource.Factory()
+                    .setCache(PlaybackCache.get(appContext))
+                    .setUpstreamDataSourceFactory(sourceFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                val mediaSource = ProgressiveMediaSource.Factory(cachedSource)
                     .createMediaSource(mediaItem)
 
-                exoPlayer.setMediaSource(mediaSource)
+                exoPlayer.setMediaSource(mediaSource, startPositionMs)
                 exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
+                exoPlayer.playWhenReady = autoPlay
                 scope.launch {
                     runCatching { api.addHistory(song) }
                 }
@@ -178,11 +192,15 @@ class PlayerController(
                     val lyricResult = lyricDeferred.await()
                     if (lyricResult != null) {
                         lyrics = parseLrc(lyricResult.lyric, lyricResult.tlyric)
+                        CarLyrics.setLyrics(lyrics)
+                        DesktopLyrics.setLyrics(lyrics)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 isBuffering = false
-                errorMessage = e.message ?: "无法播放这首歌"
+                errorMessage = e.userMessage("无法播放这首歌，请稍后重试")
             }
         }
     }
@@ -192,9 +210,19 @@ class PlayerController(
         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
     }
 
+    fun setDefaultQuality(value: String) {
+        preferredQuality = value
+        AppPrefs(appContext).preferredQuality = value
+    }
+
+    fun changeQuality(value: String) {
+        setDefaultQuality(value)
+        current?.let { loadSong(it, exoPlayer.currentPosition.coerceAtLeast(0), exoPlayer.playWhenReady) }
+    }
+
     fun next(auto: Boolean = false) {
         if (queue.isEmpty()) return
-        if (repeatMode == RepeatMode.ONE) {
+        if (auto && repeatMode == RepeatMode.ONE) {
             exoPlayer.seekTo(0)
             exoPlayer.play()
             return
@@ -222,8 +250,9 @@ class PlayerController(
     }
 
     fun seekTo(ms: Long) {
-        exoPlayer.seekTo(ms.coerceAtLeast(0L))
-        positionMs = ms.coerceAtLeast(0L)
+        val target = if (durationMs > 0) ms.coerceIn(0L, durationMs) else ms.coerceAtLeast(0L)
+        exoPlayer.seekTo(target)
+        positionMs = target
         updateActiveLyric()
     }
 

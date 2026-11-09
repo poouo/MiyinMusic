@@ -58,6 +58,25 @@
 
             <Border Style="{StaticResource SettingsCardStyle}">
                 <StackPanel Spacing="12">
+                    <TextBlock Text="桌面歌词" Style="{StaticResource SectionTitleStyle}" />
+                    <ToggleSwitch x:Name="DesktopLyricsSwitch" Header="在桌面置顶显示歌词" OnContent="开启" OffContent="关闭" Toggled="Lyrics_Changed" />
+                    <ComboBox x:Name="LyricStyleBox" Header="歌词样式" Width="240" SelectionChanged="Lyrics_SelectionChanged">
+                        <ComboBoxItem Content="翡翠流光 · 绿金渐变" Tag="emerald" />
+                        <ComboBoxItem Content="晴空 · 蓝紫渐变" Tag="sky" />
+                        <ComboBoxItem Content="落霞 · 粉金渐变" Tag="rose" />
+                        <ComboBoxItem Content="经典 · 白色描边" Tag="classic" />
+                        <ComboBoxItem Content="玻璃 · 半透明底板" Tag="glass" />
+                    </ComboBox>
+                    <Slider x:Name="LyricSizeSlider" Header="歌词字号" Minimum="24" Maximum="60" StepFrequency="2" ValueChanged="LyricsSize_Changed" Width="300" HorizontalAlignment="Left" />
+                    <ToggleSwitch x:Name="LyricDoubleSwitch" Header="双行显示（当前句与下一句）" OnContent="开启" OffContent="关闭" Toggled="Lyrics_Changed" />
+                    <ToggleSwitch x:Name="LyricLockSwitch" Header="锁定位置并穿透鼠标" OnContent="已锁定" OffContent="可拖动" Toggled="Lyrics_Changed" />
+                    <TextBlock Text="支持拖动位置、双击播放/暂停，右键歌词锁定；可在此处或托盘菜单解锁。最小化或隐藏主窗口后仍显示。" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                    <Button Content="重置歌词位置" Click="ResetLyrics_Click" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
                     <TextBlock Text="播放" Style="{StaticResource SectionTitleStyle}" />
                     <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>

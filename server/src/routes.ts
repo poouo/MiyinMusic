@@ -7,6 +7,7 @@ import {
   createSession,
   deleteUserById,
   destroySession,
+  destroyAllSessions,
   getSessionUser,
   login,
   publicUser,
@@ -47,6 +48,7 @@ import { PLATFORMS, PLATFORM_NAMES, QUALITIES, type Platform, type Quality } fro
 import { logger } from './log.js'
 import { decodeTarget, proxyStream } from './stream.js'
 import { sessionCache } from './session-cache.js'
+import { qualityOrder } from './quality.js'
 
 const log = logger('api')
 const SESSION_COOKIE = 'miyin_token'
@@ -115,12 +117,7 @@ async function loadCharts(): Promise<unknown[]> {
 
   const jobs = Object.values(providers)
     .filter((provider) => !!provider.charts)
-    .map(async (provider) => {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('排行榜请求超时')), 8000),
-      )
-      return Promise.race([provider.charts!(), timeout])
-    })
+    .map((provider) => withDeadline(provider.charts!(), 8000, '排行榜请求超时'))
 
   chartsPending = Promise.allSettled(jobs).then((results) => {
     const lists: unknown[] = []
@@ -130,7 +127,7 @@ async function loadCharts(): Promise<unknown[]> {
     }
     if (lists.length) chartsCache = { at: Date.now(), lists }
     chartsPending = null
-    return lists
+    return lists.length ? lists : chartsCache?.lists ?? []
   })
   return chartsPending
 }
@@ -202,14 +199,6 @@ function parsePlatform(value: string | null): Platform {
   const platform = String(value ?? '') as Platform
   if (!PLATFORMS.includes(platform)) throw new HttpError(400, '不支持的平台')
   return platform
-}
-
-function qualityOrder(input: unknown, strict = false): Quality[] {
-  const list = Array.isArray(input) ? input : []
-  const order = list.filter((q): q is Quality => QUALITIES.includes(q as Quality))
-  if (strict) return order
-  for (const q of QUALITIES) if (!order.includes(q)) order.push(q)
-  return order
 }
 
 function signDownload(target: string, filename: string, expire: number, subject: string): string {
@@ -409,6 +398,57 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       return true
     }
 
+    const adminPlaylistMatch = /^\/api\/admin\/users\/([^/]+)\/playlists(?:\/([^/]+))?(?:\/(copy|songs)(?:\/([^/]+))?)?$/.exec(pathname)
+    if (adminPlaylistMatch) {
+      const [, rawUserId, rawId, action, rawKey] = adminPlaylistMatch
+      const userId = decodeURIComponent(rawUserId)
+      const id = rawId ? decodeURIComponent(rawId) : ''
+      admin.getUserDetail(userId)
+      const auditPlaylist = (verb: string, detail = '') => writeAudit({ userId: actor.id, username: actor.username,
+        action: 'admin.playlist.' + verb, detail: JSON.stringify({ userId, playlistId: id, detail }) })
+      if (method === 'GET' && !action) {
+        sendJson(res, 200, id ? { playlist: library.getPlaylist(userId, id) } : admin.userPlaylists(userId))
+        return true
+      }
+      if (method === 'POST' && !id) {
+        const body = await readJson<{ name?: string; description?: string }>(req)
+        const before = new Set(admin.userPlaylists(userId).playlists.map(p => p.id))
+        library.createPlaylist(userId, body)
+        const created = admin.userPlaylists(userId).playlists.find(p => !before.has(p.id))!
+        auditPlaylist('create', created.id)
+        sendJson(res, 201, { playlist: library.getPlaylist(userId, created.id) })
+        return true
+      }
+      if (id && method === 'PATCH' && !action) {
+        const body = await readJson<{ name?: string; description?: string }>(req)
+        library.updatePlaylist(userId, id, body)
+        auditPlaylist('update')
+        sendJson(res, 200, { playlist: library.getPlaylist(userId, id) })
+        return true
+      }
+      if (id && method === 'DELETE' && !action) {
+        library.deletePlaylist(userId, id)
+        auditPlaylist('delete')
+        sendJson(res, 200, { ok: true })
+        return true
+      }
+      if (id && action === 'copy' && !rawKey && method === 'POST') {
+        const body = await readJson<{ targetUserId?: string; name?: string }>(req)
+        const targetUserId = String(body.targetUserId ?? '')
+        const playlist = library.copyPlaylist(userId, id, targetUserId, body.name)
+        auditPlaylist('copy', JSON.stringify({ targetUserId, newPlaylistId: playlist.id }))
+        sendJson(res, 201, { playlist })
+        return true
+      }
+      if (id && action === 'songs' && rawKey && method === 'DELETE') {
+        const key = decodeURIComponent(rawKey)
+        library.removePlaylistSong(userId, id, key)
+        auditPlaylist('removeSong', key)
+        sendJson(res, 200, { playlist: library.getPlaylist(userId, id) })
+        return true
+      }
+    }
+
     const adminUserMatch = /^\/api\/admin\/users\/([^/]+)(\/password|\/logout|\/unlock)?$/.exec(pathname)
     if (adminUserMatch) {
       const userId = decodeURIComponent(adminUserMatch[1])
@@ -441,14 +481,16 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       }
       if (method === 'POST' && action === '/unlock') {
         const detail = admin.getUserDetail(userId)
-        unlockAll()
+        unlockAccount('user:' + detail.username.trim().toLowerCase())
         writeAudit({ userId: actor.id, username: actor.username, action: 'admin.unlock', detail: '解锁 ' + detail.username })
         sendJson(res, 200, { ok: true })
         return true
       }
       if (method === 'POST' && action === '/logout') {
         const target = admin.getUserDetail(userId)
+        destroyAllSessions(userId)
         sessionCache.clear()
+        writeAudit({ userId: actor.id, username: actor.username, action: 'admin.user.logout', detail: target.username })
         sendJson(res, 200, { ok: true, username: target.username })
         return true
       }
@@ -484,11 +526,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       }
       const next = updateAppConfig({
         registration: body.registration ? { enabled: body.registration.enabled !== false } : undefined,
-        download: {
-          enabled: requested.enabled !== false,
-          roles: (requested.roles ?? []) as never,
-          qualities: QUALITIES.filter((q) => (requested.qualities ?? []).includes(q)),
-        },
+        download: body.download ? {
+          enabled: requested.enabled ?? getAppConfig().download.enabled,
+          roles: (requested.roles ?? getAppConfig().download.roles) as never,
+          qualities: QUALITIES.filter((q) => (requested.qualities ?? getAppConfig().download.qualities).includes(q)),
+        } : undefined,
         cache: body.cache ? cachePatch : undefined,
       })
       writeAudit({
@@ -735,7 +777,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     }
 
     const result = await withDeadline(
-      sourceManager.getMusicUrl(song, allowed, body.sourceId),
+      sourceManager.getMusicUrl(song, allowed, body.sourceId, true),
       12000,
       '获取播放地址超时，请稍后重试或换一首',
     )

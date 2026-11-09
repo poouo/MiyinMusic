@@ -28,13 +28,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.kyant.backdrop.Backdrop
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun HomeScreen(
     api: ApiClient,
+    backdrop: Backdrop,
     data: HomeData?,
     loading: Boolean,
     error: String?,
@@ -52,6 +54,7 @@ fun HomeScreen(
     onRetry: () -> Unit,
     onPlaylist: (PlaylistInfo) -> Unit,
     onChart: (ChartInfo) -> Unit,
+    onAllCharts: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
     onFavorite: (Song) -> Unit,
     onSearch: () -> Unit,
@@ -60,7 +63,7 @@ fun HomeScreen(
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 32.dp)
+        contentPadding = PaddingValues(bottom = LocalChromePadding.current)
     ) {
         item {
             Row(
@@ -106,18 +109,23 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onSearch) {
+                GlassButton(backdrop, onClick = onSearch, modifier = Modifier.size(42.dp),
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f)) {
                     Icon(
                         Icons.Rounded.Search,
                         contentDescription = "搜索",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.align(Alignment.Center).size(22.dp)
                     )
                 }
-                IconButton(onClick = onSettings) {
+                Spacer(Modifier.width(8.dp))
+                GlassButton(backdrop, onClick = onSettings, modifier = Modifier.size(42.dp),
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.22f)) {
                     Icon(
                         Icons.Rounded.Settings,
                         contentDescription = "设置",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.align(Alignment.Center).size(22.dp)
                     )
                 }
             }
@@ -128,10 +136,11 @@ fun HomeScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
+                    .height(164.dp)
                     .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF0B8F55), Color(0xFF155E9E), Color(0xFF494C9D))
+                            listOf(Color(0xFF087B61), Color(0xFF126C87), Color(0xFF4B5AA8))
                         )
                     )
                     .clickable { data?.songs?.let { if (it.isNotEmpty()) onPlay(it, 0) } }
@@ -145,7 +154,7 @@ fun HomeScreen(
                         color = Color.White
                     )
                     Text(
-                        "发现今天的好音乐",
+                        "为你精选，让好音乐陪伴今天",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.78f),
                         modifier = Modifier.padding(top = 2.dp)
@@ -158,7 +167,8 @@ fun HomeScreen(
                         ),
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp),
-                        modifier = Modifier.padding(top = 16.dp)
+                        enabled = !data?.songs.isNullOrEmpty(),
+                        modifier = Modifier.padding(top = 12.dp)
                     ) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
@@ -173,6 +183,31 @@ fun HomeScreen(
                         .align(Alignment.CenterEnd)
                         .size(120.dp)
                 )
+            }
+        }
+
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)
+                .clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))
+                .clickable(onClick = onSearch).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+                Text("搜索歌曲、歌手、专辑", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+            }
+        }
+
+        if (loading && data != null) {
+            item {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(2.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), trackColor = Color.Transparent)
+            }
+        }
+        if (error != null && data != null) {
+            item {
+                Text("部分内容暂未更新，点此重试", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp).clickable(onClick = onRetry))
             }
         }
 
@@ -214,8 +249,10 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    itemsIndexed(playlists, key = { _, p -> p.platform + "_" + p.id }) { _, playlist ->
+                    itemsIndexed(playlists, key = { _, p -> p.platform + "_" + p.id }) { index, playlist ->
+                        ListEntrance(index) {
                         PlaylistCard(playlist, api, { onPlaylist(playlist) })
+                        }
                     }
                 }
             }
@@ -223,14 +260,16 @@ fun HomeScreen(
 
         val charts = data?.charts.orEmpty()
         if (charts.isNotEmpty()) {
-            item { SectionHeader("排行榜", "全部", onRetry) }
+            item { SectionHeader("排行榜", "全部", onAllCharts) }
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    itemsIndexed(charts, key = { _, c -> c.platform + "_" + c.id }) { _, chart ->
-                        ChartCard(chart, { onChart(chart) })
+                    itemsIndexed(charts, key = { _, c -> c.platform + "_" + c.id }) { index, chart ->
+                        ListEntrance(index) {
+                        ChartCard(chart, api, { onChart(chart) })
+                        }
                     }
                 }
             }
@@ -287,6 +326,5 @@ fun HomeScreen(
             item { EmptyHint("已经到底啦，稍后再来看看") }
         }
 
-        item { Spacer(Modifier.height(56.dp)) }
     }
 }

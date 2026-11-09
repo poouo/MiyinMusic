@@ -12,12 +12,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun CoverImage(
@@ -54,10 +56,13 @@ fun CoverImage(
                 )
             )
     ) {
+        Icon(Icons.Rounded.MusicNote, contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+            modifier = Modifier.align(Alignment.Center).size(28.dp))
         val image = api.imageUrl(url)
         if (image != null) {
             AsyncImage(
-                model = image,
+                model = ImageRequest.Builder(LocalContext.current).data(image).crossfade(280).build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize()
@@ -97,6 +102,7 @@ fun SongRow(
     onFavorite: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    ListEntrance(index) {
     Row(
         modifier
             .fillMaxWidth()
@@ -152,6 +158,7 @@ fun SongRow(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -163,12 +170,12 @@ fun PlaylistCard(
 ) {
     Column(
         modifier
-            .width(148.dp)
+            .width(140.dp)
             .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
     ) {
         Box {
-            CoverImage(playlist.cover, api, Modifier.size(148.dp), corner = 18)
+            CoverImage(playlist.cover, api, Modifier.size(140.dp), corner = 22)
             if (playlist.playCount > 0) {
                 Text(
                     text = formatCount(playlist.playCount),
@@ -205,6 +212,7 @@ fun PlaylistCard(
 @Composable
 fun ChartCard(
     chart: ChartInfo,
+    api: ApiClient,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -215,18 +223,25 @@ fun ChartCard(
         "kg" -> Color(0xFFB8C24A)
         else -> Color(0xFF4F8CFF)
     }
-    Column(
+    Box(
         modifier
-            .width(154.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .width(158.dp)
+            .height(138.dp)
+            .clip(RoundedCornerShape(24.dp))
             .background(
                 Brush.linearGradient(
                     listOf(accent.copy(alpha = 0.85f), accent.copy(alpha = 0.35f))
                 )
             )
             .clickable(onClick = onClick)
-            .padding(16.dp)
     ) {
+        if (!chart.cover.isNullOrBlank()) {
+            AsyncImage(model = api.imageUrl(chart.cover), contentDescription = null,
+                contentScale = ContentScale.Crop, alpha = 0.32f, modifier = Modifier.matchParentSize())
+        }
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+            listOf(Color.Transparent, Color.Black.copy(alpha = 0.30f)))))
+        Column(Modifier.padding(16.dp)) {
         Text(
             text = chart.name,
             style = MaterialTheme.typography.titleMedium,
@@ -235,12 +250,15 @@ fun ChartCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(26.dp))
+        Spacer(Modifier.weight(1f))
         Text(
             text = "每日更新",
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.76f)
         )
+        }
+        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).size(24.dp))
     }
 }
 

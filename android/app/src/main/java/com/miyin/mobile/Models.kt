@@ -12,7 +12,14 @@ data class Song(
     @SerialName("albumName") val albumName: String = "",
     val interval: Int = 0,
     val img: String? = null,
-    val qualities: List<String> = emptyList()
+    val qualities: List<String> = emptyList(),
+    val hash: String? = null,
+    val albumId: String? = null,
+    val albumMid: String? = null,
+    val strMediaMid: String? = null,
+    val copyrightId: String? = null,
+    val lrcUrl: String? = null,
+    val songId: String? = null
 ) {
     val key: String get() = platform + "_" + songmid
     val durationText: String get() = formatDuration(interval * 1000L)
@@ -162,6 +169,9 @@ data class LibraryData(
 
 @Serializable
 data class LibraryResponse(val library: LibraryData = LibraryData())
+
+@Serializable
+data class LibraryImportRequest(val playlists: List<Playlist>)
 
 @Serializable
 data class HistoryRequest(val song: Song)

@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -27,7 +28,12 @@ import coil.compose.AsyncImage
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import android.os.Build
 
 @Composable
 fun GlassPanel(
@@ -44,13 +50,16 @@ fun GlassPanel(
                 shape = { shape },
                 effects = {
                     vibrancy()
-                    blur(18.dp.toPx())
+                    blur(8.dp.toPx())
+                    lens(24.dp.toPx(), 24.dp.toPx(), chromaticAberration = true)
                 },
+                highlight = { Highlight.Default.copy(alpha = 0.85f) },
+                shadow = { Shadow(radius = 20.dp, color = Color.Black.copy(alpha = 0.10f)) },
+                innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.18f) },
                 onDrawSurface = {
-                    drawRect(tint)
+                    drawRect(if (Build.VERSION.SDK_INT < 31) tint.copy(alpha = 0.90f) else tint)
                 }
             )
-            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
             .clip(shape),
         content = content
     )
@@ -72,7 +81,8 @@ fun GlassButton(
                 shape = { shape },
                 effects = {
                     vibrancy()
-                    blur(14.dp.toPx())
+                    blur(6.dp.toPx())
+                    lens(12.dp.toPx(), 16.dp.toPx())
                 },
                 onDrawSurface = { drawRect(tint) }
             )
@@ -108,7 +118,7 @@ fun AppBackground(api: ApiClient, cover: String?, dark: Boolean) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alpha = if (dark) 0.24f else 0.16f,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().blur(40.dp)
             )
         }
         Box(
@@ -175,5 +185,3 @@ fun SectionTitle(title: String, action: String? = null, onAction: (() -> Unit)? 
         }
     }
 }
-
-

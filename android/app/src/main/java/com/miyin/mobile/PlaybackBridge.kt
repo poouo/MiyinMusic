@@ -10,6 +10,7 @@ object PlaybackBridge {
     var hasQueue: () -> Boolean = { false }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MiYinSessionPlayer(
     player: Player,
     private val onNext: () -> Unit,

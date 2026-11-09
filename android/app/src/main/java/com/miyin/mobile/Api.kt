@@ -3,6 +3,7 @@ package com.miyin.mobile
 import android.content.Context
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -64,6 +65,7 @@ class ApiClient(context: Context) {
     }
 
     private val appContext = context.applicationContext
+    val cache = AppCache(appContext)
     private val cookieJar = PersistentCookieJar(appContext)
     private val client = OkHttpClient.Builder()
         .cookieJar(cookieJar)
@@ -171,8 +173,48 @@ class ApiClient(context: Context) {
         ).result
     }
 
-    suspend fun playlist(id: String): PlaylistDetailResult =
-        get<PlaylistDetailResult>("/api/playlist/" + java.net.URLEncoder.encode(id, "UTF-8"))
+    suspend fun playlist(id: String, offset: Int = 0): PlaylistDetailResult =
+        get<PlaylistDetailResult>("/api/playlist/" + java.net.URLEncoder.encode(id, "UTF-8") + "?limit=300&offset=" + offset)
+
+    suspend fun resolvePlaylistLink(text: String): String = withContext(Dispatchers.IO) {
+        var uri = PlaylistLink.extract(text)
+        val resolver = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+            .connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+        repeat(6) {
+            ensureActive()
+            PlaylistLink.playlistId(uri)?.let { return@withContext it }
+            resolver.newCall(Request.Builder().url(uri.toString()).header("User-Agent", USER_AGENT).build())
+                .execute().use { response ->
+                    val location = response.header("Location")
+                    if (response.code !in 300..399 || location == null) {
+                        throw IllegalArgumentException("无法识别歌单，请使用歌单页面的分享链接（不支持单曲或私人歌单）")
+                    }
+                    uri = PlaylistLink.requireAllowed(uri.resolve(location))
+                }
+        }
+        throw IllegalArgumentException("分享链接跳转过多，请复制歌单的完整链接")
+    }
+
+    suspend fun sharedPlaylist(text: String): PlaylistDetailResult {
+        val id = resolvePlaylistLink(text)
+        var detail = playlist(id)
+        val songs = detail.songs.toMutableList()
+        while (detail.hasMore) {
+            val next = playlist(id, songs.size)
+            check(next.songs.isNotEmpty()) { "歌单未加载完整，请重试" }
+            songs += next.songs
+            detail = next
+            check(songs.size <= 2000) { "单个歌单最多导入 2000 首，请拆分后再导入" }
+        }
+        check(songs.isNotEmpty()) { "歌单为空或没有可公开访问的歌曲" }
+        return detail.copy(songs = songs.distinctBy { it.key }, hasMore = false)
+    }
+
+    suspend fun importPlaylist(detail: PlaylistDetailResult): LibraryData =
+        post<LibraryImportRequest, LibraryResponse>("/api/library/import", LibraryImportRequest(
+            playlists = listOf(Playlist(name = detail.playlist.name, description = detail.playlist.description,
+                songs = detail.songs))
+        )).library
 
     suspend fun chartSongs(id: String): SearchResult =
         get<ChartSongsResponse>("/api/charts/" + java.net.URLEncoder.encode(id, "UTF-8")).result
@@ -183,7 +225,12 @@ class ApiClient(context: Context) {
     suspend fun playUrl(song: Song): UrlResult =
         post<UrlRequest, UrlResult>(
             "/api/url",
-            UrlRequest(song, listOf("320k", "128k"))
+            UrlRequest(song, when (AppPrefs(appContext).preferredQuality) {
+                "flac24bit" -> listOf("flac24bit", "flac", "320k", "128k")
+                "flac" -> listOf("flac", "320k", "128k")
+                "128k" -> listOf("128k")
+                else -> listOf("320k", "128k")
+            })
         )
 
     fun absoluteUrl(url: String): String =

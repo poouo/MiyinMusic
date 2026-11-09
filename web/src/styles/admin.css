@@ -1,0 +1,18 @@
+body:has(.admin-standalone) { overflow: auto; }
+.admin-standalone { max-width: 1540px; margin: 0 auto; padding: 36px 32px 60px; min-height: 100vh; }
+.admin-login { max-width: 420px; margin: 10vh auto; padding: 32px; border-radius: 28px; }
+.admin-standalone label { display: grid; gap: 8px; }
+.admin-playlists-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+.admin-playlist-list, .admin-playlist-detail { padding: 18px; border-radius: 18px; min-width: 0; }
+.admin-playlist-list { max-height: 70vh; overflow-y: auto; }
+.admin-user-choice { display: grid; gap: 5px; text-align: left; padding: 12px; width: 100%; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); margin-bottom: 8px; }
+.admin-user-choice:hover, .admin-user-choice.is-active { background: var(--accent-soft); border-color: var(--accent); }
+.admin-standalone .wrap { flex-wrap: wrap; }
+@media (max-width: 1000px) { .admin-standalone { padding: 20px 14px; } .admin-playlists-grid { grid-template-columns: 1fr; } .admin-playlist-list { max-height: 240px; } }
+
+.admin-playlist-detail h2, .admin-playlist-detail p, .admin-toolbar h2, .admin-toolbar p { margin: 0; }
+.admin-playlist-detail .admin-table { min-width: 0; table-layout: fixed; }
+.admin-playlist-detail .admin-table td { overflow-wrap: anywhere; }
+.admin-playlist-detail .admin-table th:nth-child(1) { width: 36%; }
+.admin-playlist-detail .admin-table th:nth-child(2) { width: 27%; }
+.admin-playlist-detail .admin-table th:nth-child(3) { width: 15%; }

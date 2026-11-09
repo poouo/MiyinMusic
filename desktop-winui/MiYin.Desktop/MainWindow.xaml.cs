@@ -829,6 +829,7 @@ public sealed partial class MainWindow : Window
         var presenter = AppWindow.Presenter as OverlappedPresenter;
         var maximized = presenter?.State == OverlappedPresenterState.Maximized;
         ConfigService.SaveWindow(AppWindow.Size.Width, AppWindow.Size.Height, AppWindow.Position.X, AppWindow.Position.Y, maximized);
+        DesktopLyrics.Instance.Dispose();
         Player.Dispose();
         TrayIcon.Instance.Dispose();
         WindowIcon.Dispose();

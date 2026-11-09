@@ -1,6 +1,6 @@
 import { getDb, p, sql, transaction } from './db.js'
 import { HttpError } from './errors.js'
-import { shortId } from './auth.js'
+import { shortId, findById } from './auth.js'
 import type { Platform, Quality, Song } from './types.js'
 import { PLATFORMS, QUALITIES } from './types.js'
 
@@ -155,7 +155,7 @@ export function addFavorite(userId: string, input: unknown): UserLibrary {
   const song = sanitizeSong(input)
   const key = songKey(song)
   const existing = sql('SELECT 1 AS x FROM favorites WHERE user_id = ? AND song_key = ?').get(userId, key)
-  if (existing) throw new HttpError(409, '已经收藏过了')
+  if (existing) return getLibrary(userId)
   const total = Number((sql('SELECT COUNT(*) AS c FROM favorites WHERE user_id = ?').get(userId) as { c: number }).c)
   if (total >= LIMITS.favorites) throw new HttpError(400, '收藏数量已达上限')
   getDb()
@@ -326,64 +326,71 @@ export function importLibrary(
   userId: string,
   input: { favorites?: unknown[]; playlists?: unknown[]; history?: unknown[]; settings?: Record<string, unknown> },
 ): UserLibrary {
-  transaction((db) => {
-    const insertFavorite = db.prepare('INSERT OR IGNORE INTO favorites (user_id, song_key, song_json, added_at) VALUES (?, ?, ?, ?)')
-    for (const item of input.favorites ?? []) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new HttpError(400, '导入数据格式不正确')
+  for (const key of ['favorites', 'playlists', 'history'] as const) {
+    if (input[key] !== undefined && !Array.isArray(input[key])) throw new HttpError(400, key + ' 必须为数组')
+  }
+  const cleanSongs = (items: unknown[]): Song[] => {
+    const unique = new Map<string, Song>()
+    for (const item of items) {
       try {
         const song = sanitizeSong(item)
-        insertFavorite.run(userId, songKey(song), JSON.stringify(song), Date.now())
-      } catch {
-        /* 跳过非法条目 */
-      }
+        if (!unique.has(songKey(song))) unique.set(songKey(song), song)
+      } catch { /* Ignore invalid individual songs from older exports. */ }
     }
+    return [...unique.values()]
+  }
+  const current = getLibrary(userId)
+  const favorites = cleanSongs(input.favorites ?? [])
+  const favoriteKeys = new Set([...current.favorites.map((entry) => songKey(entry.song)), ...favorites.map(songKey)])
+  if (favoriteKeys.size > LIMITS.favorites) throw new HttpError(400, '导入后收藏数量超过上限（3000 首）')
 
+  const signature = (playlist: { name: string; description: string; songs: Song[] }) =>
+    JSON.stringify([playlist.name, playlist.description, playlist.songs.map(songKey)])
+  const signatures = new Set(current.playlists.map(signature))
+  const playlists: { name: string; description: string; songs: Song[] }[] = []
+  for (const item of input.playlists ?? []) {
+    if (!item || typeof item !== 'object') continue
+    const raw = item as Record<string, unknown>
+    const name = String(raw.name ?? '').trim().slice(0, 40)
+    if (!name) continue
+    if (raw.songs !== undefined && !Array.isArray(raw.songs)) throw new HttpError(400, '歌单歌曲必须为数组')
+    const songs = cleanSongs((raw.songs as unknown[]) ?? [])
+    if (songs.length > LIMITS.playlistSongs) throw new HttpError(400, '单个歌单最多导入 2000 首歌曲')
+    const playlist = { name, description: String(raw.description ?? '').slice(0, 200), songs }
+    const key = signature(playlist)
+    if (signatures.has(key)) continue // Retrying an import must not create another identical playlist.
+    signatures.add(key)
+    playlists.push(playlist)
+  }
+  if (current.playlists.length + playlists.length > LIMITS.playlists) throw new HttpError(400, '导入后歌单数量超过上限（200 个）')
+  if (input.settings && (typeof input.settings !== 'object' || Array.isArray(input.settings))) {
+    throw new HttpError(400, '设置数据格式不正确')
+  }
+  const settings = Object.entries(input.settings ?? {})
+  if (settings.length > 100 || settings.some(([key, value]) => key.length > 60 || JSON.stringify(value ?? null).length > 16384)) {
+    throw new HttpError(400, '导入的设置数据过大')
+  }
+  transaction((db) => {
+    const now = Date.now()
+    const insertFavorite = db.prepare('INSERT OR IGNORE INTO favorites (user_id, song_key, song_json, added_at) VALUES (?, ?, ?, ?)')
+    for (const song of favorites) insertFavorite.run(userId, songKey(song), JSON.stringify(song), now)
     const insertPlaylist = db.prepare(
       'INSERT INTO playlists (id, user_id, name, description, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-    const insertSong = db.prepare(
-      'INSERT OR IGNORE INTO playlist_songs (playlist_id, position, song_key, song_json, added_at) VALUES (?, ?, ?, ?, ?)',
-    )
-    for (const item of input.playlists ?? []) {
-      try {
-        const raw = item as Record<string, unknown>
-        const name = String(raw.name ?? '').trim().slice(0, 40)
-        if (!name) continue
-        const id = shortId('pl_')
-        const now = Date.now()
-        insertPlaylist.run(id, userId, name, String(raw.description ?? '').slice(0, 200), 0, now, now)
-        let position = 0
-        for (const rawSong of (raw.songs as unknown[]) ?? []) {
-          try {
-            const song = sanitizeSong(rawSong)
-            insertSong.run(id, position++, songKey(song), JSON.stringify(song), now)
-          } catch {
-            /* ignore */
-          }
-        }
-      } catch {
-        /* 跳过非法歌单 */
-      }
+    const insertSong = db.prepare('INSERT INTO playlist_songs (playlist_id, position, song_key, song_json, added_at) VALUES (?, ?, ?, ?, ?)')
+    for (const playlist of playlists) {
+      const id = shortId('pl_')
+      insertPlaylist.run(id, userId, playlist.name, playlist.description, 0, now, now)
+      playlist.songs.forEach((song, index) => insertSong.run(id, index, songKey(song), JSON.stringify(song), now))
     }
-
     const insertHistory = db.prepare('INSERT OR IGNORE INTO history (user_id, song_key, song_json, played_at) VALUES (?, ?, ?, ?)')
-    for (const item of input.history ?? []) {
-      try {
-        const song = sanitizeSong(item)
-        insertHistory.run(userId, songKey(song), JSON.stringify(song), Date.now())
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (input.settings && typeof input.settings === 'object') {
-      const upsert = db.prepare(
-        'INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value',
-      )
-      for (const [key, value] of Object.entries(input.settings)) {
-        if (key.length > 60) continue
-        upsert.run(userId, key, JSON.stringify(value ?? null))
-      }
-    }
+    const history = cleanSongs(input.history ?? []).slice(0, LIMITS.history)
+    history.forEach((song, index) => insertHistory.run(userId, songKey(song), JSON.stringify(song), now - index))
+    db.prepare('DELETE FROM history WHERE user_id = ? AND song_key NOT IN (SELECT song_key FROM history WHERE user_id = ? ORDER BY played_at DESC LIMIT ?)')
+      .run(userId, userId, LIMITS.history)
+    const upsert = db.prepare('INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value')
+    for (const [key, value] of settings) upsert.run(userId, key, JSON.stringify(value ?? null))
   })
   return getLibrary(userId)
 }
@@ -419,4 +426,35 @@ export function importRawPlaylist(userId: string, playlist: { name: string; desc
 
 export function flushLibraries(): void {
   /* SQLite 立即落盘，无需额外刷写 */
+}
+
+/** Read a single owned playlist without loading the user's favorites or history. */
+export function getPlaylist(userId: string, id: string): Playlist {
+  findPlaylist(userId, id)
+  const row = getDb().prepare('SELECT * FROM playlists WHERE id = ? AND user_id = ?').get(id, userId) as Record<string, unknown>
+  const rows = getDb().prepare('SELECT song_json FROM playlist_songs WHERE playlist_id = ? ORDER BY position').all(id) as { song_json: string }[]
+  return { id, name: String(row.name), description: String(row.description ?? ''),
+    createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
+    songs: rows.map(row => parseSong(row.song_json)).filter((song): song is Song => song !== null) }
+}
+
+/** Copy is atomic, independent of the source, and always creates a new playlist. */
+export function copyPlaylist(sourceUserId: string, id: string, targetUserId: string, requestedName?: string): Playlist {
+  const newId = shortId('pl_')
+  transaction(db => {
+    const source = findPlaylist(sourceUserId, id)
+    if (!findById(targetUserId)) throw new HttpError(404, '目标用户不存在')
+    const count = Number((db.prepare('SELECT COUNT(*) AS c FROM playlists WHERE user_id = ?').get(targetUserId) as { c: number }).c)
+    if (count >= LIMITS.playlists) throw new HttpError(400, '目标用户的歌单数量已达上限')
+    const songs = db.prepare('SELECT song_key, song_json FROM playlist_songs WHERE playlist_id = ? ORDER BY position').all(id) as { song_key: string; song_json: string }[]
+    if (songs.length > LIMITS.playlistSongs) throw new HttpError(400, '歌单歌曲数量已达上限')
+    const name = String(requestedName ?? source.name).trim().slice(0, 40)
+    if (!name) throw new HttpError(400, '歌单名称不能为空')
+    const now = Date.now()
+    db.prepare('INSERT INTO playlists (id, user_id, name, description, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(newId, targetUserId, name, source.description ?? '', count, now, now)
+    const insert = db.prepare('INSERT INTO playlist_songs (playlist_id, position, song_key, song_json, added_at) VALUES (?, ?, ?, ?, ?)')
+    songs.forEach((song, index) => insert.run(newId, index, song.song_key, song.song_json, now))
+  })
+  return getPlaylist(targetUserId, newId)
 }

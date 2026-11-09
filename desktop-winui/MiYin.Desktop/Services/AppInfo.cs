@@ -8,8 +8,17 @@ public static class AppInfo
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "MiYinDesktop/1.0.0 Chrome/120.0.0.0 Safari/537.36";
 
-    public static string DataDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiYin");
+    public static string DataDirectory
+    {
+        get
+        {
+#if DEBUG
+            var testingDirectory = Environment.GetEnvironmentVariable("MIYIN_DESKTOP_DATA_DIR");
+            if (!string.IsNullOrWhiteSpace(testingDirectory)) return Path.GetFullPath(testingDirectory);
+#endif
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MiYin");
+        }
+    }
 
     public static string DefaultCacheDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MiYin", "Cache");

@@ -31,6 +31,8 @@ public sealed class TrayIcon
     private const int IdPrevious = 1003;
     private const int IdNext = 1004;
     private const int IdExit = 1005;
+    private const int IdLyrics = 1006;
+    private const int IdLyricLock = 1007;
 
     private const uint MfString = 0x00000000;
     private const uint MfSeparator = 0x00000800;
@@ -212,7 +214,7 @@ public sealed class TrayIcon
         else if (uMsg == WmCommand)
         {
             var id = (int)(wParam.ToInt64() & 0xFFFF);
-            if (id is >= IdOpen and <= IdExit)
+            if (id is >= IdOpen and <= IdLyricLock)
             {
                 HandleCommand(id);
                 return IntPtr.Zero;
@@ -233,6 +235,8 @@ public sealed class TrayIcon
             AppendMenu(menu, MfString, (UIntPtr)IdPrevious, "上一首");
             AppendMenu(menu, MfString, (UIntPtr)IdNext, "下一首");
             AppendMenu(menu, MfSeparator, UIntPtr.Zero, "");
+            AppendMenu(menu, MfString, (UIntPtr)IdLyrics, ConfigService.Current.DesktopLyrics ? "关闭桌面歌词" : "开启桌面歌词");
+            AppendMenu(menu, MfString, (UIntPtr)IdLyricLock, ConfigService.Current.LyricLocked ? "解锁桌面歌词" : "锁定桌面歌词");
             AppendMenu(menu, MfString, (UIntPtr)IdExit, "退出");
 
             SetForegroundWindow(_hwnd);
@@ -262,6 +266,14 @@ public sealed class TrayIcon
                 break;
             case IdNext:
                 MediaService.Instance.Next();
+                break;
+            case IdLyrics:
+                ConfigService.Current.DesktopLyrics = !ConfigService.Current.DesktopLyrics;
+                ConfigService.Save(); DesktopLyrics.Instance.Refresh();
+                break;
+            case IdLyricLock:
+                ConfigService.Current.LyricLocked = !ConfigService.Current.LyricLocked;
+                ConfigService.Save(); DesktopLyrics.Instance.Refresh();
                 break;
             case IdExit:
                 MainWindow.Instance?.RequestExit();

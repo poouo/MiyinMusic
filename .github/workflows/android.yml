@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MIYIN_VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +55,15 @@ jobs:
         run: |
           set -o pipefail
           chmod +x gradlew
-          gradle assembleDebug --stacktrace --no-daemon 2>&1 | tee ../android-build.log
+          gradle testDebugUnitTest lintDebug assembleDebug --stacktrace --no-daemon 2>&1 | tee ../android-build.log
+
+      - name: Verify stable APK signing certificate
+        working-directory: android
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+          keytool -exportcert -alias androiddebugkey -keystore signing/miyin-debug.p12 -storepass android -file /tmp/miyin-cert.der
+          EXPECTED=$(sha256sum /tmp/miyin-cert.der | cut -d ' ' -f 1)
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -F "$EXPECTED"
 
       - name: Show build failure
         if: failure()

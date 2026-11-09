@@ -14,11 +14,22 @@ android {
         applicationId = "com.miyin.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = providers.environmentVariable("MIYIN_VERSION_CODE").orNull?.toInt() ?: 2
+        versionName = "1.1.0"
 
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    signingConfigs {
+        // Intentionally public development certificate: identical on every CI runner.
+        getByName("debug") {
+            storeFile = rootProject.file("signing/miyin-debug.p12")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "PKCS12"
         }
     }
 
@@ -61,6 +72,7 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
 
     // AndroidLiquidGlass / Backdrop
@@ -72,6 +84,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-session:1.8.0")
+    implementation("androidx.media3:media3-database:1.8.0")
 
     debugImplementation(compose.uiTooling)
+    testImplementation("junit:junit:4.13.2")
 }

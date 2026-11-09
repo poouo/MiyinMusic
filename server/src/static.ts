@@ -53,7 +53,7 @@ export async function serveStatic(req: IncomingMessage, res: ServerResponse, pat
   let file = candidate && fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? candidate : null
   if (!file) {
     // SPA 回退
-    file = path.join(config.webDist, 'index.html')
+    file = path.join(config.webDist, pathname === '/admin' || pathname.startsWith('/admin/') ? 'admin/index.html' : 'index.html')
     if (!fs.existsSync(file)) {
       res.writeHead(404).end('not found')
       return

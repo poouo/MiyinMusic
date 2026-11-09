@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,8 +29,10 @@ import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,20 +59,28 @@ fun LibraryScreen(
     onPlay: (List<Song>, Int) -> Unit,
     onFavorite: (Song) -> Unit,
     onLogin: () -> Unit,
+    onSettings: () -> Unit,
+    onImport: () -> Unit,
+    onPlaylist: (Playlist) -> Unit,
     onLogout: () -> Unit
 ) {
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     val favoriteSongs = library.favorites.map { it.song }
     val historySongs = library.history.map { it.song }
 
     Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
             "我的",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 12.dp)
+            modifier = Modifier.weight(1f).padding(start = 20.dp, top = 8.dp, bottom = 12.dp)
         )
+        IconButton(onClick = onSettings, modifier = Modifier.padding(end = 12.dp)) {
+            Icon(Icons.Rounded.Settings, "设置", tint = MaterialTheme.colorScheme.onBackground)
+        }
+        }
 
         Row(
             Modifier
@@ -142,6 +152,19 @@ fun LibraryScreen(
             }
         }
 
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f))
+            .clickable(onClick = onImport).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AddLink, null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.padding(start = 12.dp)) {
+                Text("导入外链歌单", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                Text("QQ 音乐 · 网易云音乐", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
         Row(
             Modifier
                 .fillMaxWidth()
@@ -158,12 +181,13 @@ fun LibraryScreen(
             transitionSpec = {
                 fadeIn(tween(200)) togetherWith fadeOut(tween(140))
             },
-            label = "library-tab"
+            label = "library-tab",
+            modifier = Modifier.weight(1f)
         ) { currentTab ->
             when (currentTab) {
                 0 -> SongList(api, favoriteSongs, favorites, onPlay, onFavorite, "还没有喜欢的歌曲，去发现好音乐吧")
                 1 -> SongList(api, historySongs, favorites, onPlay, onFavorite, "还没有播放记录")
-                else -> PlaylistList(library.playlists, onPlay)
+                else -> PlaylistList(library.playlists, onPlaylist)
             }
         }
     }
@@ -217,7 +241,7 @@ private fun SongList(
         EmptyHint(emptyText)
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) {
+    LazyColumn(contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
         itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
             SongRow(
                 song = song,
@@ -232,17 +256,18 @@ private fun SongList(
 }
 
 @Composable
-private fun PlaylistList(playlists: List<Playlist>, onPlay: (List<Song>, Int) -> Unit) {
+private fun PlaylistList(playlists: List<Playlist>, onPlaylist: (Playlist) -> Unit) {
     if (playlists.isEmpty()) {
         EmptyHint("还没有创建歌单")
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 12.dp)) {
-        items(playlists, key = { it.id }) { playlist ->
+    LazyColumn(contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
+        itemsIndexed(playlists, key = { _, playlist -> playlist.id }) { index, playlist ->
+            ListEntrance(index) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable { if (playlist.songs.isNotEmpty()) onPlay(playlist.songs, 0) }
+                    .clickable { onPlaylist(playlist) }
                     .padding(horizontal = 20.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -275,6 +300,7 @@ private fun PlaylistList(playlists: List<Playlist>, onPlay: (List<Song>, Int) ->
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
             }
         }
     }

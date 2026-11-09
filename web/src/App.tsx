@@ -21,7 +21,6 @@ import { SquarePage } from './pages/SquarePage'
 import { SquarePlaylistPage } from './pages/SquarePlaylistPage'
 import { SingerPage } from './pages/SingerPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { AdminPage } from './pages/AdminPage'
 
 function Routes({ path }: { path: string }) {
   if (path === '/' || path === '') return <DiscoverPage />
@@ -35,7 +34,7 @@ function Routes({ path }: { path: string }) {
   if (path.startsWith('/singer/')) return <SingerPage id={decodeURIComponent(path.slice('/singer/'.length))} />
   if (path.startsWith('/playlist/')) return <PlaylistPage id={decodeURIComponent(path.slice('/playlist/'.length))} />
   if (path === '/settings') return <SettingsPage />
-  if (path.startsWith('/admin')) return <AdminPage />
+  if (path.startsWith('/admin')) { window.location.replace('/admin/'); return null }
   return (
     <EmptyState
       title="页面不存在"

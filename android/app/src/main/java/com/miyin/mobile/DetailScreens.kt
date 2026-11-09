@@ -1,8 +1,6 @@
 package com.miyin.mobile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -36,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +41,7 @@ import androidx.compose.ui.unit.dp
 fun PlaylistDetailScreen(
     api: ApiClient,
     playlist: PlaylistInfo,
+    localSongs: List<Song>? = null,
     favorites: Set<String>,
     onBack: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
@@ -56,16 +53,19 @@ fun PlaylistDetailScreen(
 
     LaunchedEffect(playlist.id) {
         loading = true
-        runCatching { api.playlist(playlist.id) }
+        runCatching {
+            if (localSongs != null) PlaylistDetailResult(playlist, localSongs, localSongs.size)
+            else api.playlist(playlist.id)
+        }
             .onSuccess { detail = it }
-            .onFailure { error = it.message ?: "歌单加载失败" }
+            .onFailure { error = it.userMessage("歌单加载失败，请重试") }
         loading = false
     }
 
     val songs = detail?.songs.orEmpty()
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp)
+        contentPadding = PaddingValues(bottom = LocalChromePadding.current)
     ) {
         item {
             DetailTopBar(onBack)
@@ -163,14 +163,14 @@ fun ChartDetailScreen(
         loading = true
         runCatching { api.chartSongs(chart.id) }
             .onSuccess { result = it }
-            .onFailure { error = it.message ?: "榜单加载失败" }
+            .onFailure { error = it.userMessage("榜单加载失败，请重试") }
         loading = false
     }
 
     val songs = result?.list.orEmpty()
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp)
+        contentPadding = PaddingValues(bottom = LocalChromePadding.current)
     ) {
         item { DetailTopBar(onBack) }
         item {

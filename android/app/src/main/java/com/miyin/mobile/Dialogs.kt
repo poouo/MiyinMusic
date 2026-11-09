@@ -2,10 +2,8 @@ package com.miyin.mobile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,19 +26,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,7 +81,7 @@ fun LoginDialog(
             }.onSuccess {
                 onSuccess(it)
             }.onFailure {
-                error = it.message ?: "登录失败"
+                error = it.userMessage("登录失败，请稍后重试")
             }
             loading = false
         }
@@ -247,104 +239,5 @@ private fun LoginTab(label: String, selected: Boolean, modifier: Modifier = Modi
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SettingsDialog(
-    api: ApiClient,
-    user: User?,
-    themeMode: String,
-    onTheme: (String) -> Unit,
-    onLogin: () -> Unit,
-    onLogout: () -> Unit,
-    onClose: () -> Unit
-) {
-    ModalBottomSheet(onDismissRequest = onClose) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 22.dp)
-                .padding(bottom = 30.dp)
-        ) {
-            Text(
-                "设置",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "外观",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 18.dp)
-            )
-            listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onTheme(value) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(selected = themeMode == value, onClick = { onTheme(value) })
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            Text(
-                "账号",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        user?.nickname ?: "未登录",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        if (user == null) "登录后可同步收藏和歌单" else user.username + " · " + user.roleText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (user == null) {
-                    Button(
-                        onClick = onLogin,
-                        shape = RoundedCornerShape(50),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) { Text("登录") }
-                } else {
-                    TextButton(onClick = onLogout) { Text("退出登录") }
-                }
-            }
-
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            Text(
-                "关于",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                "觅音 Android 1.0.0",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Text(
-                "服务端固定连接 music.poouo.com，客户端不提供服务器配置。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
     }
 }

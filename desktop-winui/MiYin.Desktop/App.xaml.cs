@@ -36,5 +36,6 @@ public partial class App : Application
         MainWindow.Activate();
         // 立即展示主界面；连接、账号同步都在后台静默进行。
         MainWindow.StartShell();
+        DesktopLyrics.Instance.Initialize();
     }
 }
