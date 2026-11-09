@@ -1,14 +1,16 @@
 package com.miyin.mobile
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,8 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,21 +75,10 @@ fun NowPlayingScreen(
 ) {
     val song = player.current
     var showQueue by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
     val background = MaterialTheme.colorScheme.background
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    LaunchedEffect(player.activeLyricIndex) {
-        val index = player.activeLyricIndex
-        if (index >= 0 && index < player.lyrics.size) {
-            listState.animateScrollToItem(index)
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(background)
-    ) {
+    Box(Modifier.fillMaxSize().background(background)) {
         val cover = api.imageUrl(song?.img)
         if (cover != null) {
             AsyncImage(
@@ -117,209 +108,87 @@ fun NowPlayingScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 18.dp)
+                .padding(horizontal = if (landscape) 28.dp else 18.dp)
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = "返回",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "正在播放",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        song?.albumName.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = { showQueue = true }) {
-                    Icon(
-                        Icons.Rounded.QueueMusic,
-                        contentDescription = "播放列表",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-            }
-
-            CoverImage(
-                url = song?.img,
-                api = api,
-                modifier = Modifier
-                    .fillMaxWidth(0.78f)
-                    .aspectRatio(1f)
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 14.dp),
-                corner = 30
+            NowPlayingHeader(
+                albumName = song?.albumName.orEmpty(),
+                onBack = onBack,
+                onQueue = { showQueue = true }
             )
 
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        song?.name ?: "未在播放",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        song?.singer.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                if (song != null) {
-                    IconButton(onClick = { onFavorite(song) }) {
-                        Icon(
-                            if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            contentDescription = "喜欢",
-                            tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(top = 8.dp)
-            ) {
-                if (player.lyrics.isEmpty()) {
-                    Text(
-                        if (player.isBuffering) "歌词加载中…" else "暂无歌词",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        itemsIndexed(player.lyrics) { index, line ->
-                            val active = index == player.activeLyricIndex
-                            Column(
-                                Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = line.text,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontSize = if (active) 19.sp else 14.sp,
-                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (active) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
-                                    textAlign = TextAlign.Center
-                                )
-                                if (line.translation.isNotBlank()) {
-                                    Text(
-                                        text = line.translation,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (active) MaterialTheme.colorScheme.onSurfaceVariant
-                                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(top = 3.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            player.errorMessage?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            val duration = max(player.durationMs, 1L)
-            Slider(
-                value = player.positionMs.coerceIn(0L, duration).toFloat(),
-                onValueChange = { player.seekTo(it.toLong()) },
-                valueRange = 0f..duration.toFloat(),
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatDuration(player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatDuration(player.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PlayerControl(
-                    icon = if (player.shuffle) Icons.Rounded.Shuffle else Icons.Rounded.Shuffle,
-                    active = player.shuffle,
-                    onClick = { player.toggleShuffle() }
-                )
-                PlayerControl(Icons.Rounded.SkipPrevious, onClick = { player.previous() })
-                Box(
+            if (landscape) {
+                Row(
                     Modifier
-                        .size(66.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable { player.toggle() },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(30.dp)
                 ) {
-                    if (player.isBuffering) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(26.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
+                    Column(
+                        Modifier
+                            .weight(0.42f)
+                            .fillMaxHeight()
+                            .padding(top = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CoverImage(
+                            url = song?.img,
+                            api = api,
+                            modifier = Modifier
+                                .fillMaxWidth(0.70f)
+                                .aspectRatio(1f),
+                            corner = 26
                         )
-                    } else {
-                        Icon(
-                            if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = "播放/暂停",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(34.dp)
+                        SongTitle(
+                            song = song,
+                            isFavorite = isFavorite,
+                            onFavorite = onFavorite,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 14.dp)
                         )
                     }
+
+                    Column(
+                        Modifier
+                            .weight(0.58f)
+                            .fillMaxHeight()
+                    ) {
+                        LyricsPane(
+                            player = player,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        )
+                        ProgressControls(player)
+                    }
                 }
-                PlayerControl(Icons.Rounded.SkipNext, onClick = { player.next() })
-                PlayerControl(
-                    icon = if (player.repeatMode == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                    active = player.repeatMode != RepeatMode.OFF,
-                    onClick = { player.toggleRepeat() }
+            } else {
+                CoverImage(
+                    url = song?.img,
+                    api = api,
+                    modifier = Modifier
+                        .fillMaxWidth(0.78f)
+                        .aspectRatio(1f)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 14.dp),
+                    corner = 30
                 )
+                SongTitle(
+                    song = song,
+                    isFavorite = isFavorite,
+                    onFavorite = onFavorite,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp)
+                )
+                LyricsPane(
+                    player = player,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 8.dp)
+                )
+                ProgressControls(player)
             }
         }
     }
@@ -373,6 +242,224 @@ fun NowPlayingScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NowPlayingHeader(
+    albumName: String,
+    onBack: () -> Unit,
+    onQueue: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                Icons.Rounded.KeyboardArrowDown,
+                contentDescription = "返回",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "正在播放",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                albumName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onQueue) {
+            Icon(
+                Icons.Rounded.QueueMusic,
+                contentDescription = "播放列表",
+                tint = MaterialTheme.colorScheme.onBackground
+            )
+        }
+    }
+}
+
+@Composable
+private fun SongTitle(
+    song: Song?,
+    isFavorite: Boolean,
+    onFavorite: (Song) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                song?.name ?: "未在播放",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                song?.singer.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        if (song != null) {
+            IconButton(onClick = { onFavorite(song) }) {
+                Icon(
+                    if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    contentDescription = "喜欢",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LyricsPane(
+    player: PlayerController,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(player.activeLyricIndex) {
+        val index = player.activeLyricIndex
+        if (index >= 0 && index < player.lyrics.size) {
+            listState.animateScrollToItem(index)
+        }
+    }
+
+    Box(modifier) {
+        if (player.lyrics.isEmpty()) {
+            Text(
+                if (player.isBuffering) "歌词加载中…" else "暂无歌词",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                itemsIndexed(player.lyrics) { index, line ->
+                    val active = index == player.activeLyricIndex
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = line.text,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontSize = if (active) 19.sp else 14.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            color = if (active) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
+                            textAlign = TextAlign.Center
+                        )
+                        if (line.translation.isNotBlank()) {
+                            Text(
+                                text = line.translation,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (active) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressControls(player: PlayerController) {
+    player.errorMessage?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
+            textAlign = TextAlign.Center
+        )
+    }
+
+    val duration = max(player.durationMs, 1L)
+    Slider(
+        value = player.positionMs.coerceIn(0L, duration).toFloat(),
+        onValueChange = { player.seekTo(it.toLong()) },
+        valueRange = 0f..duration.toFloat(),
+        colors = SliderDefaults.colors(
+            thumbColor = MaterialTheme.colorScheme.primary,
+            activeTrackColor = MaterialTheme.colorScheme.primary,
+            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(formatDuration(player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(formatDuration(player.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 14.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        PlayerControl(
+            icon = Icons.Rounded.Shuffle,
+            active = player.shuffle,
+            onClick = { player.toggleShuffle() }
+        )
+        PlayerControl(Icons.Rounded.SkipPrevious, onClick = { player.previous() })
+        Box(
+            Modifier
+                .size(if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) 58.dp else 66.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable { player.toggle() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (player.isBuffering) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(26.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    if (player.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = "播放/暂停",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        PlayerControl(Icons.Rounded.SkipNext, onClick = { player.next() })
+        PlayerControl(
+            icon = if (player.repeatMode == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+            active = player.repeatMode != RepeatMode.OFF,
+            onClick = { player.toggleRepeat() }
+        )
     }
 }
 

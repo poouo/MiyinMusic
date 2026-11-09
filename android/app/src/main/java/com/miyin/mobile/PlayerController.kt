@@ -6,9 +6,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -33,18 +33,36 @@ class PlayerController(
     context: Context,
     private val api: ApiClient
 ) {
-    val exoPlayer: ExoPlayer = ExoPlayer.Builder(context).build().apply {
-        setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true
-        )
-    }
+    val exoPlayer: ExoPlayer = PlaybackEngine.player(context)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loadJob: Job? = null
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(playing: Boolean) {
+            isPlaying = playing
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            when (state) {
+                Player.STATE_BUFFERING -> isBuffering = true
+                Player.STATE_READY -> {
+                    isBuffering = false
+                    val d = exoPlayer.duration
+                    if (d > 0) durationMs = d
+                }
+                Player.STATE_ENDED -> {
+                    isBuffering = false
+                    next(auto = true)
+                }
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            isBuffering = false
+            errorMessage = "播放失败：" + (error.message ?: "音频源不可用")
+        }
+    }
 
     var queue by mutableStateOf<List<Song>>(emptyList())
         private set
@@ -74,31 +92,7 @@ class PlayerController(
         private set
 
     init {
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlaybackStateChanged(state: Int) {
-                when (state) {
-                    Player.STATE_BUFFERING -> isBuffering = true
-                    Player.STATE_READY -> {
-                        isBuffering = false
-                        val d = exoPlayer.duration
-                        if (d > 0) durationMs = d
-                    }
-                    Player.STATE_ENDED -> {
-                        isBuffering = false
-                        next(auto = true)
-                    }
-                }
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                isBuffering = false
-                errorMessage = "播放失败：" + (error.message ?: "音频源不可用")
-            }
-        })
+        exoPlayer.addListener(playerListener)
 
         scope.launch {
             while (isActive) {
@@ -155,8 +149,18 @@ class PlayerController(
                     .setUserAgent(ApiClient.USER_AGENT)
                     .setAllowCrossProtocolRedirects(true)
                     .setDefaultRequestProperties(headers)
+                val metadata = MediaMetadata.Builder()
+                    .setTitle(song.name)
+                    .setArtist(song.singer)
+                    .setAlbumTitle(song.albumName)
+                    .setArtworkUri(api.imageUrl(song.img)?.toUri())
+                    .build()
+                val mediaItem = MediaItem.Builder()
+                    .setUri(url)
+                    .setMediaMetadata(metadata)
+                    .build()
                 val mediaSource = ProgressiveMediaSource.Factory(sourceFactory)
-                    .createMediaSource(MediaItem.fromUri(url))
+                    .createMediaSource(mediaItem)
 
                 exoPlayer.setMediaSource(mediaSource)
                 exoPlayer.prepare()
@@ -252,7 +256,8 @@ class PlayerController(
     fun release() {
         loadJob?.cancel()
         scope.cancel()
-        exoPlayer.release()
+        exoPlayer.removeListener(playerListener)
+        // ExoPlayer 由 PlaybackService / PlaybackEngine 持有，Activity 重建时不停止播放。
     }
 
     companion object {

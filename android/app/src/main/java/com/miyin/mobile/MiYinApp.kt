@@ -1,6 +1,7 @@
 package com.miyin.mobile
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -164,6 +165,16 @@ fun MiYinApp() {
         prefs.themeMode = themeMode
     }
 
+    // 只有正在播放音乐时才允许横屏；暂停 / 未播放时锁定竖屏。
+    LaunchedEffect(player.isPlaying) {
+        val activity = context as? Activity
+        activity?.requestedOrientation = if (player.isPlaying || player.isBuffering) {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     BackHandler(
         enabled = showNowPlaying || showLogin || showSettings || playlistDetail != null || chartDetail != null
     ) {
@@ -198,7 +209,7 @@ fun MiYinApp() {
                     Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
-                        .padding(bottom = 158.dp)
+                        .padding(bottom = if (player.current != null) 230.dp else 150.dp)
                 ) {
                     when {
                         playlistDetail != null -> PlaylistDetailScreen(
