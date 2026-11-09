@@ -55,7 +55,8 @@ jobs:
       - name: Show build failure
         if: failure()
         run: |
-          MSG=$(tail -80 android-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-5000)
+          MSG=$(grep -E "^e: |error:|What went wrong|Could not resolve|Caused by:" android-build.log 2>/dev/null | head -60 | tr '\n' ' ' | cut -c1-9000)
+          if [ -z "$MSG" ]; then MSG=$(tail -40 android-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-5000); fi
           echo "::error title=Android build failed::$MSG"
 
       - name: Upload build log
@@ -64,6 +65,16 @@ jobs:
         with:
           name: android-build-log
           path: android-build.log
+
+      - name: Publish build log to release
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-log
+          name: Android build log
+          prerelease: true
+          overwrite_files: true
+          files: android-build.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
