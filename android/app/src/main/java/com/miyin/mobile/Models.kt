@@ -47,6 +47,12 @@ data class SingerInfo(
 )
 
 @Serializable
+data class SearchResponse(val result: SearchResult = SearchResult())
+
+@Serializable
+data class ChartSongsResponse(val result: SearchResult = SearchResult())
+
+@Serializable
 data class SearchResult(
     val platform: String = "tx",
     val list: List<Song> = emptyList(),

@@ -166,14 +166,16 @@ class ApiClient(context: Context) {
 
     suspend fun search(platform: String, query: String, page: Int = 1, limit: Int = 30): SearchResult {
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-        return get<SearchResult>("/api/search?platform=" + platform + "&q=" + encoded + "&page=" + page + "&limit=" + limit)
+        return get<SearchResponse>(
+            "/api/search?platform=" + platform + "&q=" + encoded + "&page=" + page + "&limit=" + limit
+        ).result
     }
 
     suspend fun playlist(id: String): PlaylistDetailResult =
         get<PlaylistDetailResult>("/api/playlist/" + java.net.URLEncoder.encode(id, "UTF-8"))
 
     suspend fun chartSongs(id: String): SearchResult =
-        get<SearchResult>("/api/charts/" + java.net.URLEncoder.encode(id, "UTF-8"))
+        get<ChartSongsResponse>("/api/charts/" + java.net.URLEncoder.encode(id, "UTF-8")).result
 
     suspend fun lyric(song: Song): LyricResult =
         post<LyricRequest, LyricResponse>("/api/lyric", LyricRequest(song)).lyric
