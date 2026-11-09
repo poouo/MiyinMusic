@@ -4,7 +4,9 @@
 歌曲搜索接五大平台公开接口，播放地址由 [洛雪音乐自定义音源](https://github.com/pdone/lx-music-source) 在服务端实时解析。
 支持**多用户**（游客 / 普通用户 / 会员 / 管理员）、**管理后台**与可配置的**下载权限**，数据存放在 SQLite。
 
-同时提供 **Windows 原生客户端**（WinUI 3 / C#，非 WebView 套壳），见 [desktop-winui](desktop-winui/README.md)。
+同时提供 **Windows 原生客户端**（WinUI 3 / C#，非 WebView 套壳），见 [desktop-winui](desktop-winui/README.md)；以及 **Android 原生客户端**（Kotlin / Jetpack Compose + Liquid Glass），见 [android](android/README.md)。
+
+Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/android-latest/app-debug.apk)
 
 ---
 
@@ -39,8 +41,15 @@
 - 客户端自动缓存 + 主动下载，播放优先本地文件
 - 服务端自动缓存歌单 / 收藏音频，音源脚本自动更新，客户端无需配置音源
 
+**Android 原生客户端（Compose）**
+- Kotlin + Jetpack Compose，原生 Material 3 界面，参考 QQ 音乐手机端
+- 发现、搜索、歌单 / 榜单详情、我的音乐
+- Media3 在线播放、迷你播放器、全屏歌词、播放队列
+- Liquid Glass（AndroidLiquidGlass / Backdrop）底栏与播放器
+- 登录 / 收藏 / 最近播放同步，浅色 / 深色 / 跟随系统
+
 **外观**
-- 7 套主题：跟随系统 / 极光 / 日光 / 午夜蓝 / 森林 / 樱花 / 纯黑
+- Web 端 7 套主题：跟随系统 / 极光 / 日光 / 午夜蓝 / 森林 / 樱花 / 纯黑
 - 右上角一键切换，选择保存在本机
 - 液态玻璃材质、明暗两套完整的组件适配
 

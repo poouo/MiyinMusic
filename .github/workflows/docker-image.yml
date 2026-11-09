@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "server/**"
+      - "web/**"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - "package.json"
+      - "package-lock.json"
   workflow_dispatch:
 
 permissions:
