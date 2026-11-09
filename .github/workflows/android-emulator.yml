@@ -65,35 +65,11 @@ jobs:
             sleep 4
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
 
-            adb shell input tap 900 205
+            adb shell input tap 900 330
             sleep 3
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-login.png"
 
-            adb shell input keyevent 4
-            sleep 2
-            adb shell input tap 540 2185
-            sleep 4
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-tab.png"
-
-            adb shell input tap 540 260
-            sleep 1
-            adb shell input text "love"
-            adb shell input keyevent 66
-            sleep 8
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-search-results.png"
-
-            adb shell input tap 540 620
-            sleep 9
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-mini.png"
-
-            adb shell input tap 540 1960
-            sleep 4
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now.png"
-
-            adb shell input keyevent 4
-            sleep 2
-
-            adb logcat -d -t 1800 > "$GITHUB_WORKSPACE/logcat.txt"
+            adb logcat -d -t 1200 > "$GITHUB_WORKSPACE/logcat.txt"
 
       - name: Publish smoke artifacts
         if: always()
@@ -105,11 +81,6 @@ jobs:
           overwrite_files: true
           files: |
             screenshot-home.png
-            screenshot-scrolled.png
-            screenshot-search-tab.png
-            screenshot-search-results.png
-            screenshot-mini.png
-            screenshot-now.png
             screenshot-library.png
             screenshot-login.png
             logcat.txt
