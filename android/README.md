@@ -43,7 +43,9 @@ https://github.com/poouo/MiyinMusic/releases/download/android-latest/app-debug.a
 
 - [首页](../docs/screenshots/android/screenshot-home.png)
 - [搜索](../docs/screenshots/android/screenshot-search-results.png)
-- [播放](../docs/screenshots/android/screenshot-now.png)
+- [播放·竖屏](../docs/screenshots/android/screenshot-now-portrait.png)
+- [播放·横屏](../docs/screenshots/android/screenshot-now-landscape.png)
+- [系统媒体通知](../docs/screenshots/android/screenshot-notification.png)
 - [我的](../docs/screenshots/android/screenshot-library.png)
 - [登录](../docs/screenshots/android/screenshot-login.png)
 

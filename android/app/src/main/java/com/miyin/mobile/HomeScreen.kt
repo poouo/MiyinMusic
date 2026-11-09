@@ -283,6 +283,10 @@ fun HomeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(48.dp)) }
+        if (songs.isEmpty() && singers.isEmpty() && !loading && data != null) {
+            item { EmptyHint("已经到底啦，稍后再来看看") }
+        }
+
+        item { Spacer(Modifier.height(56.dp)) }
     }
 }
