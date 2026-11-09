@@ -25,6 +25,9 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(sessionActivity)
             .build()
+        // 即使 UI 没有创建 MediaController，也要把 session 注册到 Service，
+        // 否则 Media3 不会创建媒体通知、也不会进入前台服务。
+        mediaSession?.let { addSession(it) }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
