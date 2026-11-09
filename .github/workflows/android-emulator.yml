@@ -44,7 +44,10 @@ jobs:
 
       - name: Build APK
         run: |
-          curl -fL --retry 3 -o /tmp/gradle-8.13-bin.zip "https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/gradle-8.13-bin.zip "https://downloads.gradle.org/distributions/gradle-8.13-bin.zip" && break
+            sleep 5
+          done
           unzip -q /tmp/gradle-8.13-bin.zip -d /opt
           /opt/gradle-8.13/bin/gradle -p android assembleDebug --no-daemon
 
@@ -58,20 +61,48 @@ jobs:
           disable-animations: true
           script: |
             adb install -r "$GITHUB_WORKSPACE/android/app/build/outputs/apk/debug/app-debug.apk"
+            adb shell pm grant com.miyin.mobile android.permission.POST_NOTIFICATIONS || true
             adb shell am force-stop com.google.android.apps.nexuslauncher || true
             adb shell am start -W -n com.miyin.mobile/.MainActivity
             sleep 15
             adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-home.png"
 
-            adb shell input tap 880 2185
-            sleep 4
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-library.png"
-
-            adb shell input tap 900 330
+            # 未播放时锁定竖屏
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
             sleep 3
-            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-login.png"
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-locked-portrait.png"
+            adb shell settings put system user_rotation 0
+            sleep 2
 
-            adb logcat -d -t 1500 > "$GITHUB_WORKSPACE/logcat.txt"
+            # 播放（首页“每日推荐”按钮）
+            adb shell input tap 220 660
+            sleep 10
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-mini.png"
+
+            # 系统媒体通知
+            adb shell cmd statusbar expand-notifications
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-notification.png"
+            adb shell cmd statusbar collapse
+            sleep 2
+
+            # 打开全屏播放
+            adb shell input tap 540 1910
+            sleep 4
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now-portrait.png"
+
+            # 播放中允许横屏
+            adb shell settings put system user_rotation 1
+            sleep 6
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-now-landscape.png"
+
+            # 暂停后回到竖屏
+            adb shell input keyevent 127
+            sleep 5
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/screenshot-paused-portrait.png"
+
+            adb logcat -d -t 2500 > "$GITHUB_WORKSPACE/logcat.txt"
 
       - name: Publish smoke artifacts
         if: always()
@@ -83,6 +114,10 @@ jobs:
           overwrite_files: true
           files: |
             screenshot-home.png
-            screenshot-library.png
-            screenshot-login.png
+            screenshot-locked-portrait.png
+            screenshot-mini.png
+            screenshot-notification.png
+            screenshot-now-portrait.png
+            screenshot-now-landscape.png
+            screenshot-paused-portrait.png
             logcat.txt
