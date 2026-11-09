@@ -39,21 +39,31 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
+      - name: Download Gradle
+        run: |
+          curl -fL --retry 3 -o /tmp/gradle-8.13-bin.zip "https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          unzip -q /tmp/gradle-8.13-bin.zip -d /opt
+          echo "/opt/gradle-8.13/bin" >> "$GITHUB_PATH"
+
       - name: Build debug APK
         working-directory: android
         run: |
           set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee ../android-build.log
+          gradle assembleDebug --stacktrace --no-daemon 2>&1 | tee ../android-build.log
 
-      - name: Publish build log on failure
+      - name: Show build failure
         if: failure()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add android-build.log
-          git commit -m "CI Android build log [skip ci]" || true
-          git push origin HEAD:ci-logs --force
+          MSG=$(tail -80 android-build.log 2>/dev/null | tr '\n' ' ' | cut -c1-5000)
+          echo "::error title=Android build failed::$MSG"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: android-build.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
