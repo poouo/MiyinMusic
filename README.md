@@ -1,12 +1,14 @@
 # 觅音 · MiYin Music
 
-一个自托管的 **Web 音乐播放器**，手机 / 平板 / 桌面全端自适应，界面基于 iOS 风格的**液态玻璃**材质。
+一个自托管的 **Web 音乐播放器**，手机 / 平板 / 桌面全端自适应，Web 界面采用**石墨灰与暖橙的唱片店风格**。
 歌曲搜索接五大平台公开接口，播放地址由 [洛雪音乐自定义音源](https://github.com/pdone/lx-music-source) 在服务端实时解析。
 支持**多用户**（游客 / 普通用户 / 会员 / 管理员）、**管理后台**与可配置的**下载权限**，数据存放在 SQLite。
 
 同时提供 **Windows 原生客户端**（WinUI 3 / C#，非 WebView 套壳），见 [desktop-winui](desktop-winui/README.md)；以及 **Android 原生客户端**（Kotlin / Jetpack Compose + Liquid Glass），见 [android](android/README.md)。
 
 Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/android-latest/app-debug.apk)
+
+三端新增功能、操作入口与验证范围见 [1–7 工作包实施记录](docs/implementation-progress.md)。现有发布包尚未包含当前工作区未发布的改动。
 
 ---
 
@@ -15,11 +17,14 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 **播放**
 - 音源脚本在服务端沙箱中运行，多音源并发竞速，失败按音质降级重试
 - 音频经同源代理转发，支持 Range，可拖动进度条
-- 播放队列、随机 / 单曲 / 列表循环、音量控制
+- 播放队列、顺序 / 列表循环 / 单曲循环 / 随机四种互斥模式，Web / Android / Windows 使用相同切换顺序
 - **点击选择音质**（Hi-Res / 无损 / 高品质 / 标准），不再一键盲切
-- 播放条悬浮在左下角，宽度按内容收窄；可收起成一个小圆球，悬停出现「展开播放条 / 展开全部」
+- 桌面播放条按歌曲、播放控制、歌词进度和功能按钮分组；向左收起成唱片入口，向右展开
 - **当前歌词直接显示在播放条里**：长句会按这句的时长自动横向滚动，唱到哪滚到哪，下一句重新开始
-- 逐行滚动歌词（含翻译）、Media Session 锁屏控制
+- 底部播放条与完整播放页均提供音量滑杆、静音和百分比
+- 完整播放页默认显示逐行滚动歌词（含翻译），独立打开播放队列；支持 Media Session 锁屏控制
+- 三端搜索历史、睡眠定时、本曲后停止、歌词偏移，以及默认暂停的队列和进度恢复
+- 下一首播放地址短期预取；Web 真实五段均衡器，Android 保留系统均衡器
 
 **内容**
 - 酷我、酷狗、QQ 音乐、网易云、咪咕五大平台搜索
@@ -30,6 +35,9 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 - **54 个排行榜**：网易云 12 + QQ 16 + 酷我 14 + 酷狗 12，可按平台筛选
 - **我的喜欢**：内置歌单常驻侧边栏，点心形即收藏
 - 自建歌单、播放记录
+- QQ / 网易真实歌手作品分页、专辑详情、关注歌手，以及基于喜欢和近期播放的推荐理由
+- 公开歌单完整预览并保存独立副本；三端按账号保留音乐库元数据快照
+- Android 主动离线下载与队列 / 歌单编辑；Windows 本地目录扫描与音乐索引
 
 **Windows 原生客户端（WinUI 3）**
 - 原生 XAML / C#，不依赖 WebView2 / Electron
@@ -43,15 +51,15 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 
 **Android 原生客户端（Compose）**
 - Kotlin + Jetpack Compose，原生 Material 3 界面，参考 QQ 音乐手机端
-- 发现、搜索、歌单 / 榜单详情、我的音乐
+- 发现、搜索、歌单 / 榜单 / 歌手详情、我的音乐
 - Media3 在线播放、迷你播放器、全屏歌词、播放队列
 - Liquid Glass（AndroidLiquidGlass / Backdrop）底栏与播放器
 - 登录 / 收藏 / 最近播放同步，浅色 / 深色 / 跟随系统
 
 **外观**
-- Web 端 7 套主题：跟随系统 / 极光 / 日光 / 午夜蓝 / 森林 / 樱花 / 纯黑
+- Web 端 7 套主题：跟随系统 / 石墨 / 日光 / 午夜蓝 / 森林 / 樱花 / 纯黑
 - 右上角一键切换，选择保存在本机
-- 液态玻璃材质、明暗两套完整的组件适配
+- 中性底色、暖橙强调、真实封面与唱片细节，明暗两套完整的组件适配
 
 **账号与权限**
 
@@ -160,7 +168,7 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 
 ### Windows 原生客户端
 
-免安装包在 `dist/MiYin-1.0.0-win-x64.zip`，解压后运行 `MiYin.exe`。客户端固定连接公网域名，不提供服务器配置入口。
+免安装包从 GitHub Actions 的 **Build Windows client** 下载 `MiYin-Windows-x64` 产物，内含客户端 ZIP 和 SHA-256 校验文件；解压客户端 ZIP 的完整目录后运行 `MiYin.exe`。客户端固定连接公网域名，不提供服务器配置入口。
 
 从源码构建：
 

@@ -65,6 +65,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
 
 public sealed class DownloadIndexEntry
 {
+    public string Quality { get; set; } = "";
     public string Path { get; set; } = "";
     public long Bytes { get; set; }
     public long CreatedAt { get; set; }
@@ -125,16 +126,21 @@ public sealed class DownloadService
     }
 
     public bool TryGetDownloadPath(string songKey, out string path)
+        => TryGetDownloadPath(songKey, out path, out _);
+
+    public bool TryGetDownloadPath(string songKey, out string path, out string quality)
     {
         lock (_gate)
         {
             if (_index.TryGetValue(songKey, out var entry) && File.Exists(entry.Path))
             {
                 path = entry.Path;
+                quality = entry.Quality;
                 return true;
             }
         }
         path = "";
+        quality = "";
         return false;
     }
 
@@ -196,6 +202,7 @@ public sealed class DownloadService
             {
                 _index[song.Key] = new DownloadIndexEntry
                 {
+                    Quality = meta.Quality,
                     Path = path,
                     Bytes = received,
                     CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),

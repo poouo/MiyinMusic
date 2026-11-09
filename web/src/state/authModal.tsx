@@ -112,15 +112,15 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                 <MusicIcon size={21} />
               </div>
               <div>
-                <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '0.02em' }}>觅音</div>
-                <div className="faint" style={{ fontSize: 10.5, letterSpacing: '0.2em' }}>
-                  MIYIN MUSIC
+                <div style={{ fontSize: 20, fontWeight: 500 }}>觅音</div>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  MiYin Music
                 </div>
               </div>
             </div>
 
             <p className="dim auth-modal__desc">
-              {hint ?? '登录后可同步收藏与歌单，并解锁下载。'}
+              {hint ?? '登录后，收藏与歌单可在不同设备间同步'}
             </p>
 
             {allowRegister ? (

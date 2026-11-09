@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using MiYin.Desktop.Models;
 using MiYin.Desktop.Services;
 using Microsoft.UI.Xaml;
@@ -30,6 +30,34 @@ public sealed partial class SettingsPage : Page
     };
 
     private bool _ready;
+    private void OpenFollowing_Click(object sender, RoutedEventArgs e)
+    {
+        if (FollowingBox.SelectedItem is SingerInfo singer) MainWindow.Instance?.NavigateTo(typeof(SongsPage), singer);
+    }
+    private async void ScanMusic_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = await PickFolderAsync();
+        if (folder is null) return;
+        ScanMusicButton.IsEnabled = false; ScanMusicButton.Content = "扫描中…";
+        try { var count = await LocalMusicService.Instance.ScanAsync(folder); Notify.Show($"已读取 {count} 首本地音乐"); }
+        catch (Exception ex) { Notify.Show("扫描失败：" + ex.Message, true); }
+        finally { ScanMusicButton.IsEnabled = true; ScanMusicButton.Content = "扫描音乐目录"; }
+    }
+    private void OpenLocalMusic_Click(object sender, RoutedEventArgs e) => MainWindow.Instance?.NavigateTo(typeof(LibraryPage), "local");
+    private async void ClearLocalMusic_Click(object sender, RoutedEventArgs e)
+    {
+        if (await Dialogs.ConfirmAsync("清空本地音乐索引", "仅移除索引，原音频文件会保留。")) LocalMusicService.Instance.ClearIndex();
+    }
+    private async void ImportPlaylist_Click(object sender, RoutedEventArgs e) => await Dialogs.ImportPlaylistAsync();
+    private void Sleep_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ready && SleepBox.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag?.ToString(), out var minutes)) MediaService.Instance.SetSleep(minutes);
+    }
+    private void Offset_Changed(NumberBox sender, NumberBoxValueChangedEventArgs e)
+    {
+        if (!_ready || !double.IsFinite(sender.Value)) return;
+        ConfigService.Current.LyricOffset = Math.Clamp(sender.Value, -10, 10); ConfigService.Save();
+    }
 
     public SettingsPage()
     {
@@ -60,6 +88,10 @@ public sealed partial class SettingsPage : Page
     private void Refresh()
     {
         _ready = false;
+        FollowingBox.ItemsSource = LibraryService.Instance.FavoriteSingers;
+        FollowingBox.SelectedIndex = LibraryService.Instance.FavoriteSingers.Count > 0 ? 0 : -1;
+        OffsetBox.Value = ConfigService.Current.LyricOffset;
+        SleepBox.SelectedIndex = MediaService.Instance.StopAfterTrack ? 4 : MediaService.Instance.SleepUntil is null ? 0 : -1;
         var theme = ConfigService.Current.Theme;
         ThemeBox.SelectedIndex = theme == "light" ? 1 : theme == "dark" ? 2 : 0;
 
@@ -130,7 +162,7 @@ public sealed partial class SettingsPage : Page
     }
     private void ResetLyrics_Click(object sender, RoutedEventArgs e)
     {
-        ConfigService.Current.LyricX = null; ConfigService.Current.LyricY = null;
+        ConfigService.Current.LyricX = null; ConfigService.Current.LyricY = null; ConfigService.Current.LyricWidth = null;
         ConfigService.Current.LyricLocked = false;
         ConfigService.Save(); DesktopLyrics.Instance.Dispose(); DesktopLyrics.Instance.Initialize(); Refresh();
     }

@@ -176,6 +176,8 @@ fun LibraryScreen(
             LibraryTab("歌单", Icons.Rounded.QueueMusic, tab == 2, library.playlists.size) { tab = 2 }
         }
 
+        Row { PlaylistManager(); OfflineLibraryButton(onPlay) }
+        DiscoveryTools()
         AnimatedContent(
             targetState = tab,
             transitionSpec = {

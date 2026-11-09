@@ -33,7 +33,9 @@ public sealed class SongRow : INotifyPropertyChanged
     public string QualityText => Song.QualityText;
     public string CoverUrl => Song.CoverUrl;
     public string PlatformText => Song.PlatformText;
-    public bool CanRemove { get; set; }
+    public bool IsCloudSong => Song.Platform != "local";
+    private bool _canRemove;
+    public bool CanRemove { get => _canRemove; set { if (_canRemove == value) return; _canRemove = value; OnPropertyChanged(); } }
 
     private bool _isFavorite;
     public bool IsFavorite
@@ -58,6 +60,19 @@ public sealed class SongRow : INotifyPropertyChanged
 
 public sealed partial class SongListView : UserControl
 {
+    private void Singer_Click(object sender, RoutedEventArgs e)
+    {
+        var song = _menuRow?.Song;
+        var artist = song?.Artists.FirstOrDefault();
+        if (song is null || artist is null) { Notify.Show("此歌曲未提供歌手 ID"); return; }
+        MainWindow.Instance?.NavigateTo(typeof(MiYin.Desktop.Views.SongsPage), new SingerInfo { Id = song.Platform + "-" + artist.Id, Platform = song.Platform, Name = artist.Name });
+    }
+    private void Album_Click(object sender, RoutedEventArgs e)
+    {
+        var song = _menuRow?.Song;
+        if (song is null || song.Platform is not ("tx" or "wy") || string.IsNullOrWhiteSpace(song.AlbumId)) { Notify.Show("此歌曲未提供可用的专辑 ID"); return; }
+        MainWindow.Instance?.NavigateTo(typeof(MiYin.Desktop.Views.SongsPage), new AlbumDetail { Id = song.Platform + "-" + (song.AlbumMid ?? song.AlbumId) });
+    }
     private SongRow? _menuRow;
 
     public ObservableCollection<SongRow> Rows { get; } = new();
@@ -69,26 +84,31 @@ public sealed partial class SongListView : UserControl
     {
         InitializeComponent();
         Items.ItemsSource = Rows;
-        LibraryService.Instance.Changed += (_, _) => RefreshFavorites();
+        Loaded += (_, _) => { LibraryService.Instance.Changed -= LibraryChanged; LibraryService.Instance.Changed += LibraryChanged; RefreshFavorites(); };
+        Unloaded += (_, _) => { LibraryService.Instance.Changed -= LibraryChanged; _menuRow = null; };
     }
+
+    private void LibraryChanged(object? sender, EventArgs args) => RefreshFavorites();
 
     public void SetSongs(IEnumerable<Song> songs, bool allowRemove = false)
     {
         AllowRemove = allowRemove;
-        Rows.Clear();
-        var index = 0;
-        foreach (var song in songs)
+        var list = songs.ToList();
+        if (list.Count < Rows.Count || Rows.Where((row, index) => row.Song.Key != list[index].Key || !ReferenceEquals(row.Song, list[index])).Any()) Rows.Clear();
+        foreach (var row in Rows) row.CanRemove = allowRemove;
+        for (var index = Rows.Count; index < list.Count; index++)
         {
-            var row = new SongRow(song, index++) { CanRemove = allowRemove };
+            var row = new SongRow(list[index], index) { CanRemove = allowRemove };
             Rows.Add(row);
         }
     }
 
     public void RefreshFavorites()
     {
+        var favorites = LibraryService.Instance.Favorites.Select(song => song.Key).ToHashSet();
         foreach (var row in Rows)
         {
-            row.IsFavorite = LibraryService.Instance.IsFavorite(row.Song);
+            row.IsFavorite = favorites.Contains(row.Song.Key);
             row.CanRemove = AllowRemove;
         }
     }
@@ -130,7 +150,7 @@ public sealed partial class SongListView : UserControl
     private async void Favorite_Click(object sender, RoutedEventArgs e)
     {
         var row = RowOf(sender);
-        if (row is null) return;
+        if (row is null || !row.IsCloudSong) return;
         await LibraryService.Instance.ToggleFavoriteAsync(row.Song);
         row.IsFavorite = LibraryService.Instance.IsFavorite(row.Song);
     }
@@ -138,14 +158,14 @@ public sealed partial class SongListView : UserControl
     private async void Add_Click(object sender, RoutedEventArgs e)
     {
         var row = RowOf(sender);
-        if (row is null) return;
+        if (row is null || !row.IsCloudSong) return;
         await Dialogs.AddToPlaylistAsync(row.Song);
     }
 
     private async void Download_Click(object sender, RoutedEventArgs e)
     {
         var row = _menuRow ?? RowOf(sender);
-        if (row is null) return;
+        if (row is null || !row.IsCloudSong) return;
         if (!AuthService.Instance.CanDownload)
         {
             Notify.Show("当前账号没有下载权限，或管理员已关闭下载", true);

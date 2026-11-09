@@ -18,10 +18,16 @@ public sealed class LibraryService
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private GuestLibrary _guest = new();
     private bool _guestImported;
+    private string? _visibleOwner;
+    private int _reloadVersion;
+    public bool IsOffline { get; private set; }
+    private static string SnapshotPath(string owner) => Path.Combine(AppInfo.DataDirectory,
+        "library-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(owner))) + ".json");
 
     public ObservableCollection<Song> Favorites { get; } = new();
     public ObservableCollection<Playlist> Playlists { get; } = new();
     public ObservableCollection<HistoryEntry> History { get; } = new();
+    public ObservableCollection<SingerInfo> FavoriteSingers { get; } = new();
 
     public event EventHandler? Changed;
     public bool IsGuest => !AuthService.Instance.IsLoggedIn;
@@ -33,22 +39,41 @@ public sealed class LibraryService
 
     public async Task ReloadAsync()
     {
-        if (AuthService.Instance.IsLoggedIn)
+        var version = ++_reloadVersion;
+        var owner = AuthService.Instance.User?.Id;
+        if (_visibleOwner != owner)
+        {
+            _visibleOwner = owner;
+            if (owner is null) ApplyGuest();
+            else
+            {
+                LibraryData? cached = null;
+                try { cached = JsonSerializer.Deserialize<LibraryData>(File.ReadAllText(SnapshotPath(owner)), JsonOptions); } catch { }
+                Apply(cached ?? new LibraryData());
+                IsOffline = true;
+            }
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        if (owner is not null)
         {
             try
             {
                 var data = await ApiService.GetLibraryAsync();
+                if (version != _reloadVersion || owner != AuthService.Instance.User?.Id) return;
                 if (!_guestImported && IsLibraryEmpty(data) && !IsGuestEmpty())
                 {
                     await ImportGuestAsync();
                     data = await ApiService.GetLibraryAsync();
                 }
+                if (version != _reloadVersion || owner != AuthService.Instance.User?.Id) return;
+                IsOffline = false;
                 Apply(data);
             }
             catch (Exception ex)
             {
-                Notify.Show("加载云端音乐库失败：" + ex.Message, true);
-                ApplyGuest();
+                if (version != _reloadVersion || owner != AuthService.Instance.User?.Id) return;
+                IsOffline = true;
+                Notify.Show("云端音乐库暂不可用，保留此账号的本机快照：" + ex.Message, true);
             }
         }
         else
@@ -66,6 +91,20 @@ public sealed class LibraryService
 
     private void Apply(LibraryData data)
     {
+        FavoriteSingers.Clear();
+        foreach (var singer in data.FavoriteSingers) FavoriteSingers.Add(singer);
+        var owner = AuthService.Instance.User?.Id;
+        if (owner is not null)
+        {
+            try
+            {
+                Directory.CreateDirectory(AppInfo.DataDirectory);
+                var path = SnapshotPath(owner);
+                File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(data, JsonOptions));
+                File.Move(path + ".tmp", path, true);
+            }
+            catch { /* Keep the visible library if storage is temporarily unavailable. */ }
+        }
         Favorites.Clear();
         foreach (var favorite in data.Favorites) Favorites.Add(favorite.Song);
         Playlists.Clear();
@@ -76,6 +115,7 @@ public sealed class LibraryService
 
     private void ApplyGuest()
     {
+        FavoriteSingers.Clear();
         Favorites.Clear();
         foreach (var favorite in _guest.Favorites) Favorites.Add(favorite.Song);
         Playlists.Clear();
@@ -139,6 +179,7 @@ public sealed class LibraryService
 
     public async Task ToggleFavoriteAsync(Song song)
     {
+        if (song.Platform == "local") { Notify.Show("本地文件保留在本地音乐库"); return; }
         var exists = IsFavorite(song);
         if (IsGuest)
         {

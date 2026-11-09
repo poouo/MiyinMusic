@@ -20,9 +20,8 @@
                 <Border Height="150" CornerRadius="18" Padding="28,0">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#1D5B46" Offset="0" />
-                            <GradientStop Color="#17304C" Offset="0.55" />
-                            <GradientStop Color="#2B1F4A" Offset="1" />
+                            <GradientStop Color="#292929" Offset="0" />
+                            <GradientStop Color="#1C1C1C" Offset="1" />
                         </LinearGradientBrush>
                     </Border.Background>
                     <Grid>
@@ -43,6 +42,7 @@
                 </Border>
 
                 <StackPanel x:Name="PlaylistSection" Spacing="10">
+                    <Button Content="为你选歌" Click="ForYou_Click" HorizontalAlignment="Left" />
                     <Grid>
                         <TextBlock Text="推荐歌单" Style="{StaticResource SectionTitleStyle}" />
                         <Button HorizontalAlignment="Right" Style="{StaticResource GhostButtonStyle}" Height="26" Padding="10,0"

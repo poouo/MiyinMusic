@@ -12,9 +12,32 @@ namespace MiYin.Desktop.Views;
 public sealed partial class SongsPage : Page
 {
     private object? _parameter;
+    private async void SavePlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playlist is null) return;
+        SavePlaylistButton.IsEnabled = false;
+        try { await Dialogs.ImportPlaylistAsync(_playlist.Id); }
+        finally { SavePlaylistButton.IsEnabled = true; }
+    }
     private List<Song> _songs = new();
     private PlaylistInfo? _playlist;
     private int _offset;
+    private SingerInfo? _singer;
+    private int _singerPage = 1;
+    private async void FollowSinger_Click(object sender, RoutedEventArgs e)
+    {
+        if (_singer is null) return;
+        if (!AuthService.Instance.IsLoggedIn) { await Dialogs.LoginAsync(); return; }
+        FollowButton.IsEnabled = false;
+        try
+        {
+            await ApiService.FollowSingerAsync(_singer, LibraryService.Instance.FavoriteSingers.Any(item => item.Id == _singer.Id));
+            await LibraryService.Instance.ReloadAsync(); RefreshFollow();
+        }
+        catch (Exception ex) { Notify.Show("关注失败：" + ex.Message, true); }
+        finally { FollowButton.IsEnabled = true; }
+    }
+    private void RefreshFollow() => FollowButton.Content = LibraryService.Instance.FavoriteSingers.Any(item => item.Id == _singer?.Id) ? "取消关注" : "关注歌手";
     private bool _loadingMore;
 
     public SongsPage()
@@ -36,11 +59,24 @@ public sealed partial class SongsPage : Page
         ErrorText.Visibility = Visibility.Collapsed;
         LoadMoreButton.Visibility = Visibility.Collapsed;
         PlayAllButton.IsEnabled = false;
+        SavePlaylistButton.Visibility = Visibility.Collapsed;
+        FollowButton.Visibility = Visibility.Collapsed;
+        _singer = null; _playlist = null; _singerPage = 1;
         LoadingRing.IsActive = true;
         try
         {
             switch (_parameter)
             {
+                case AlbumDetail album:
+                    var detail = await ApiService.GetAlbumAsync(album.Id);
+                    _songs = detail.Songs; Songs.SetSongs(_songs); PlayAllButton.IsEnabled = _songs.Count > 0;
+                    SetHeader("专辑", detail.Name, detail.Singer + $" · {_songs.Count} 首", "", album.Id.StartsWith("wy-") ? "wy" : "tx", detail.Cover, false);
+                    break;
+                case string route when route == "for-you":
+                    var recommendations = await ApiService.GetRecommendationsAsync();
+                    _songs = recommendations.Items.Select(item => item.Song).ToList(); Songs.SetSongs(_songs); PlayAllButton.IsEnabled = _songs.Count > 0;
+                    SetHeader("为你选歌", "从喜欢继续听", $"{_songs.Count} 首", string.Join("；", recommendations.Items.Select(item => item.Reason).Distinct()), "", _songs.FirstOrDefault()?.CoverUrl, false);
+                    break;
                 case ChartInfo chart:
                     await LoadChartAsync(chart);
                     break;
@@ -80,6 +116,7 @@ public sealed partial class SongsPage : Page
     {
         var result = await ApiService.GetPlaylistAsync(playlist.Id, append ? _offset : 0, 100);
         _playlist = result.Playlist;
+        SavePlaylistButton.Visibility = Visibility.Visible;
         _offset = append ? _offset + result.Songs.Count : result.Songs.Count;
         if (append) _songs.AddRange(result.Songs);
         else _songs = result.Songs;
@@ -97,7 +134,10 @@ public sealed partial class SongsPage : Page
         var result = await ApiService.GetSingerAsync(singer.Id, singer.Name);
         _songs = result.Songs;
         var detail = result.Singer;
-        SetHeader("歌手", detail.Name, $"{PlatformInfo.FullName(detail.Platform)} · {detail.FollowersText} · {_songs.Count} 首热门歌曲", "", detail.Platform, detail.PicUrl, true);
+        _singer = detail; _singerPage = result.Page;
+        FollowButton.Visibility = Visibility.Visible; RefreshFollow();
+        LoadMoreButton.Visibility = result.HasMore ? Visibility.Visible : Visibility.Collapsed;
+        SetHeader("歌手", detail.Name, $"{PlatformInfo.FullName(detail.Platform)} · 已加载 {_songs.Count} 首", result.Source == "catalog" ? "歌手作品" : "搜索到的歌曲", detail.Platform, detail.PicUrl, true);
         Songs.SetSongs(_songs);
         PlayAllButton.IsEnabled = _songs.Count > 0;
     }
@@ -143,6 +183,20 @@ public sealed partial class SongsPage : Page
 
     private async void LoadMore_Click(object sender, RoutedEventArgs e)
     {
+        if (!_loadingMore && _singer is not null)
+        {
+            _loadingMore = true; LoadMoreButton.IsEnabled = false;
+            try
+            {
+                var result = await ApiService.GetSingerPageAsync(_singer, _singerPage + 1);
+                var keys = _songs.Select(song => song.Key).ToHashSet(); _songs.AddRange(result.Songs.Where(song => keys.Add(song.Key)));
+                _singerPage = result.Page; Songs.SetSongs(_songs); LoadMoreButton.Visibility = result.HasMore ? Visibility.Visible : Visibility.Collapsed;
+                MetaText.Text = $"已加载 {_songs.Count} 首 · " + (result.Source == "catalog" ? "歌手作品" : "搜索到的歌曲");
+            }
+            catch (Exception ex) { Notify.Show("加载失败，可重试：" + ex.Message, true); }
+            finally { _loadingMore = false; LoadMoreButton.IsEnabled = true; }
+            return;
+        }
         if (_loadingMore || _playlist is null) return;
         _loadingMore = true;
         LoadMoreButton.IsEnabled = false;

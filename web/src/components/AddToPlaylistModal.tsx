@@ -74,7 +74,7 @@ export function AddToPlaylistModal({ open, song, onClose }: Props) {
                   <FolderIcon size={18} />
                 </div>
                 <div className="grow">
-                  <div style={{ fontWeight: 650 }}>{playlist.name}</div>
+                  <div style={{ fontWeight: 500 }}>{playlist.name}</div>
                   <div className="dim" style={{ fontSize: 12 }}>
                     {playlist.songs.length} 首
                   </div>

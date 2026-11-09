@@ -67,6 +67,7 @@ public static class FormatText
 
 public sealed class Song
 {
+    [JsonPropertyName("artists")] public List<ArtistRef> Artists { get; set; } = new();
     [JsonPropertyName("platform")] public string Platform { get; set; } = "";
     [JsonPropertyName("songmid")] public string SongMid { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
@@ -204,6 +205,7 @@ public sealed class Playlist
 
 public sealed class LibraryData
 {
+    [JsonPropertyName("favoriteSingers")] public List<SingerInfo> FavoriteSingers { get; set; } = new();
     [JsonPropertyName("favorites")] public List<FavoriteEntry> Favorites { get; set; } = new();
     [JsonPropertyName("playlists")] public List<Playlist> Playlists { get; set; } = new();
     [JsonPropertyName("history")] public List<HistoryEntry> History { get; set; } = new();
@@ -308,6 +310,9 @@ public sealed class DiscoverSongsResponse { [JsonPropertyName("songs")] public L
 public sealed class DiscoverSingersResponse { [JsonPropertyName("singers")] public List<SingerInfo> Singers { get; set; } = new(); }
 public sealed class SingerDetailResponse
 {
+    [JsonPropertyName("hasMore")] public bool HasMore { get; set; }
+    [JsonPropertyName("page")] public int Page { get; set; } = 1;
+    [JsonPropertyName("source")] public string Source { get; set; } = "search";
     [JsonPropertyName("singer")] public SingerInfo Singer { get; set; } = new();
     [JsonPropertyName("songs")] public List<Song> Songs { get; set; } = new();
 }

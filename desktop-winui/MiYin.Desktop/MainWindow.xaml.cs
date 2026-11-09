@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MiYin.Desktop.Models;
@@ -23,6 +23,12 @@ public sealed partial class MainWindow : Window
     public MediaService Player => MediaService.Instance;
 
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _toastTimer;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _playerInfoTimer;
+    private readonly PlayerInfoIdleState _playerInfoIdle = new();
+    private readonly long _idleClock = Stopwatch.GetTimestamp();
+    private bool _volumeOpen;
+    private readonly PlayerInfoIdleState _focusIdle = new(TimeSpan.FromSeconds(8));
+    private bool _focusMode;
     private bool _updatingProgress;
     private bool _updatingVolume;
     private bool _draggingProgress;
@@ -52,6 +58,13 @@ public sealed partial class MainWindow : Window
         _toastTimer.Interval = TimeSpan.FromSeconds(3.4);
         _toastTimer.IsRepeating = false;
         _toastTimer.Tick += (_, _) => ToastBar.IsOpen = false;
+        _playerInfoTimer = DispatcherQueue.CreateTimer();
+        _playerInfoTimer.Interval = TimeSpan.FromMilliseconds(200);
+        _playerInfoTimer.Tick += (_, _) => UpdatePlayerInfoMode();
+        Root.AddHandler(UIElement.PointerEnteredEvent, new PointerEventHandler(Root_PointerActivity), true);
+        Root.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(Root_PointerActivity), true);
+        Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(Root_KeyActivity), true);
+        VolumeFlyoutContent.DataContext = this;
 
         SidebarPlaylists.ItemsSource = LibraryService.Instance.Playlists;
         QueueList.ItemsSource = Player.Queue;
@@ -67,13 +80,11 @@ public sealed partial class MainWindow : Window
         AuthService.Instance.Changed += (_, _) => RefreshUserCard();
         LibraryService.Instance.Changed += (_, _) => RefreshUserCard();
         Notify.Shown += ShowToast;
+        DesktopLyrics.Instance.Changed += (_, _) => UpdateDesktopLyricsButtons();
 
         ProgressSlider.PointerPressed += (_, _) => _draggingProgress = true;
         ProgressSlider.PointerReleased += (_, _) => _draggingProgress = false;
         ProgressSlider.PointerCaptureLost += (_, _) => _draggingProgress = false;
-        FullProgressSlider.PointerPressed += (_, _) => _draggingProgress = true;
-        FullProgressSlider.PointerReleased += (_, _) => _draggingProgress = false;
-        FullProgressSlider.PointerCaptureLost += (_, _) => _draggingProgress = false;
         VolumeSlider.PointerPressed += (_, _) => _draggingVolume = true;
         VolumeSlider.PointerReleased += (_, _) => _draggingVolume = false;
         VolumeSlider.PointerCaptureLost += (_, _) => _draggingVolume = false;
@@ -82,9 +93,13 @@ public sealed partial class MainWindow : Window
         RefreshUserCard();
         UpdateQueueState();
         UpdateHeartIcon();
+        UpdateDesktopLyricsButtons();
         UpdateLyricsEmptyState();
         TrayIcon.Instance.UpdateTooltip("觅音");
         VolumeSlider.Value = Player.Volume;
+        UpdateVolumeUI();
+        ApplySidebar();
+        _playerInfoTimer.Start();
     }
 
     private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
@@ -118,7 +133,6 @@ public sealed partial class MainWindow : Window
     public void HideToTray()
     {
         AppWindow.Hide();
-        TrayIcon.Instance.ShowBalloon("觅音", "已隐藏到托盘，双击托盘图标可恢复窗口。");
     }
 
     public void ShowFromTray()
@@ -213,6 +227,7 @@ public sealed partial class MainWindow : Window
         UpdateTitleBarTheme();
         RefreshUserCard();
         UpdateHeartIcon();
+        UpdateDesktopLyricsButtons();
     }
 
     private void UpdateTitleBarTheme()
@@ -497,11 +512,108 @@ public sealed partial class MainWindow : Window
 
     private void Repeat_Click(object sender, RoutedEventArgs e)
     {
-        Player.CycleRepeat();
-        Notify.Show(Player.RepeatText);
+        if (sender is not Button button) return;
+        var flyout = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Top };
+        var current = PlaybackOrder.Mode(Player.RepeatMode, Player.Shuffle);
+        (string Mode, string Name, string Glyph)[] modes = [("shuffle", "随机播放", "\uE8B1"), ("off", "顺序播放", "\uE8FD"), ("one", "单曲循环", "\uE8ED"), ("all", "列表循环", "\uE8EE")];
+        foreach (var mode in modes)
+        {
+            var item = new ToggleMenuFlyoutItem { Text = mode.Name, IsChecked = current == mode.Mode, Icon = new FontIcon { Glyph = mode.Glyph, FontSize = 16 } };
+            item.Click += (_, _) => Player.SetPlaybackMode(mode.Mode);
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt(button);
     }
 
     private void ToggleMute_Click(object sender, RoutedEventArgs e) => Player.ToggleMute();
+
+    private void FullVolume_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement anchor) VolumeFlyout.ShowAt(anchor);
+    }
+
+    private void VolumeFlyout_Opened(object? sender, object e)
+    {
+        _volumeOpen = true;
+        UpdateVolumeUI();
+        UpdatePlayerInfoMode(pointerInside: true);
+    }
+
+    private void VolumeFlyout_Closed(object? sender, object e)
+    {
+        _volumeOpen = false;
+        _draggingVolume = false;
+        ConfigService.Save();
+    }
+
+    private void UpdateVolumeUI()
+    {
+        if (!_draggingVolume)
+        {
+            _updatingVolume = true;
+            VolumeSlider.Value = Player.Volume;
+            _updatingVolume = false;
+        }
+        VolumePercentText.Text = $"{Math.Round((Player.IsMuted ? 0 : Player.Volume) * 100)}%";
+        var label = Player.IsMuted ? "取消静音" : "静音";
+        ToolTipService.SetToolTip(VolumeMuteButton, label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(VolumeMuteButton, label);
+    }
+
+    private void Root_PointerActivity(object sender, PointerRoutedEventArgs e) => UpdatePlayerInfoMode(pointerInside: true);
+    private void Root_KeyActivity(object sender, KeyRoutedEventArgs e) => UpdatePlayerInfoMode(pointerInside: true);
+
+    private void UpdatePlayerInfoMode(bool? pointerInside = null)
+    {
+        var inside = pointerInside ?? IsPointerOverWindow();
+        var show = _playerInfoIdle.Update(inside || _volumeOpen,
+            Player.IsPlaying && !string.IsNullOrWhiteSpace(Player.ActiveLyric) && string.IsNullOrEmpty(Player.ErrorMessage),
+            Stopwatch.GetElapsedTime(_idleClock));
+        var focus = _focusIdle.Update(inside || _volumeOpen || QueueOverlay.Visibility == Visibility.Visible,
+            Player.IsPlaying && NowPlayingOverlay.Visibility == Visibility.Visible && string.IsNullOrEmpty(Player.ErrorMessage),
+            Stopwatch.GetElapsedTime(_idleClock));
+        SetFocusMode(focus);
+        PlayerTitleInfo.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+        PlayerLyricLine.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private bool IsPointerOverWindow()
+    {
+        if (!GetCursorPos(out var point)) return true;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        // Includes owned popups and the native title bar; covered or minimized
+        // windows do not count merely because the pointer is inside their bounds.
+        return GetAncestor(WindowFromPoint(point), 3) == hwnd;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct PointerPoint { public int X, Y; }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out PointerPoint point);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(PointerPoint point);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    private void DesktopLyrics_Click(object sender, RoutedEventArgs e)
+    {
+        ConfigService.Current.DesktopLyrics = !ConfigService.Current.DesktopLyrics;
+        ConfigService.Save();
+        DesktopLyrics.Instance.Refresh();
+        UpdateDesktopLyricsButtons();
+    }
+
+    private void DesktopLyrics_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        DesktopLyrics.Instance.ShowSettings();
+    }
+
+    private void UpdateDesktopLyricsButtons()
+    {
+        var enabled = ConfigService.Current.DesktopLyrics;
+        foreach (var button in new[] { LyricsButton })
+        {
+            button.Foreground = ThemeService.Brush(enabled ? "AccentBrush" : "TextDimBrush");
+            ToolTipService.SetToolTip(button, enabled ? "关闭桌面歌词" : "开启桌面歌词");
+        }
+    }
 
     private async void PlayerFavorite_Click(object sender, RoutedEventArgs e)
     {
@@ -527,14 +639,15 @@ public sealed partial class MainWindow : Window
     {
         if (sender is not Button button) return;
         var flyout = new MenuFlyout();
-        var autoItem = new MenuFlyoutItem { Text = "自动（按设置优先）" };
+        flyout.Items.Add(new MenuFlyoutItem { Text = "当前：" + PlaybackQuality.Name(Player.CurrentQuality), IsEnabled = false });
+        var autoItem = new ToggleMenuFlyoutItem { Text = "自动", IsChecked = Player.RequestedQuality == "auto" };
         autoItem.Click += async (_, _) => await Player.SetQualityAsync("auto");
         flyout.Items.Add(autoItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
         var qualities = Player.Current?.Qualities?.Distinct().ToList() ?? new List<string> { "flac", "320k", "128k" };
         foreach (var quality in qualities)
         {
-            var item = new MenuFlyoutItem { Text = QualityName(quality) };
+            var item = new ToggleMenuFlyoutItem { Text = QualityName(quality), IsChecked = Player.RequestedQuality == quality };
             item.Click += async (_, _) => await Player.SetQualityAsync(quality);
             flyout.Items.Add(item);
         }
@@ -600,12 +713,8 @@ public sealed partial class MainWindow : Window
                 UpdateProgressMaximum(Player.DurationSeconds);
                 break;
             case nameof(MediaService.Volume):
-                if (!_draggingVolume)
-                {
-                    _updatingVolume = true;
-                    VolumeSlider.Value = Player.Volume;
-                    _updatingVolume = false;
-                }
+            case nameof(MediaService.IsMuted):
+                UpdateVolumeUI();
                 break;
             case nameof(MediaService.ActiveLyricIndex):
                 UpdateLyricSelection();
@@ -613,12 +722,17 @@ public sealed partial class MainWindow : Window
             case nameof(MediaService.Current):
             case nameof(MediaService.HasCurrent):
                 UpdateHeartIcon();
+                UpdatePlayerInfoMode();
                 TrayIcon.Instance.UpdateTooltip(Player.Current is null
                     ? "觅音"
                     : "觅音 · " + Player.Title + " - " + Player.Singer);
                 break;
             case nameof(MediaService.QueueIndex):
                 UpdateQueueState();
+                break;
+            case nameof(MediaService.IsPlaying):
+            case nameof(MediaService.ErrorMessage):
+                UpdatePlayerInfoMode();
                 break;
         }
     }
@@ -627,7 +741,6 @@ public sealed partial class MainWindow : Window
     {
         _updatingProgress = true;
         ProgressSlider.Value = seconds;
-        FullProgressSlider.Value = seconds;
         _updatingProgress = false;
     }
 
@@ -635,7 +748,6 @@ public sealed partial class MainWindow : Window
     {
         _updatingProgress = true;
         ProgressSlider.Maximum = Math.Max(1, seconds);
-        FullProgressSlider.Maximum = Math.Max(1, seconds);
         _updatingProgress = false;
     }
 
@@ -643,6 +755,7 @@ public sealed partial class MainWindow : Window
     {
         NoLyricsText.Visibility = Player.Lyrics.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (Player.Lyrics.Count == 0) PlayerLyricLine.Text = "";
+        UpdatePlayerInfoMode();
     }
 
     private void UpdateLyricSelection()
@@ -653,8 +766,9 @@ public sealed partial class MainWindow : Window
             Player.Lyrics[i].IsActive = i == index;
         }
         PlayerLyricLine.Text = index >= 0 && index < Player.Lyrics.Count
-            ? "♪ " + Player.Lyrics[index].Text
+            ? Player.Lyrics[index].Text
             : "";
+        UpdatePlayerInfoMode();
         if (index < 0 || index >= Player.Lyrics.Count || NowPlayingOverlay.Visibility != Visibility.Visible)
         {
             return;
@@ -704,10 +818,85 @@ public sealed partial class MainWindow : Window
         return null;
     }
 
+    private void SetFocusMode(bool focus)
+    {
+        if (_focusMode == focus) return;
+        _focusMode = focus;
+        foreach (var element in new UIElement[] { PlayerBarSurface, NowPlayingHeader, TitleBarArea })
+        {
+            element.IsHitTestVisible = !focus;
+            var animation = new DoubleAnimation { To = focus ? 0 : 1, Duration = new Duration(TimeSpan.FromMilliseconds(focus ? 250 : 100)) };
+            Storyboard.SetTarget(animation, element);
+            Storyboard.SetTargetProperty(animation, "Opacity");
+            var story = new Storyboard(); story.Children.Add(animation); story.Begin();
+        }
+    }
+
+    private void NowPlayingBody_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var size = Math.Clamp(Math.Min(e.NewSize.Height - 48, (e.NewSize.Width - 168) / 2), 160, 420);
+        FullCover.Width = FullCover.Height = size;
+    }
+
+    private void PlayerBar_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        for (var node = e.OriginalSource as DependencyObject; node is not null && node != PlayerBarSurface; node = VisualTreeHelper.GetParent(node))
+            if (node is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or Microsoft.UI.Xaml.Controls.Primitives.RangeBase or Microsoft.UI.Xaml.Controls.Primitives.ScrollBar) return;
+        e.Handled = true;
+        OpenNowPlaying();
+    }
+
+    private void SidebarToggle_Click(object sender, RoutedEventArgs e)
+    {
+        ConfigService.Current.SidebarCollapsed = !ConfigService.Current.SidebarCollapsed;
+        ApplySidebar();
+        ConfigService.Save();
+    }
+
+    private void ApplySidebar()
+    {
+        var collapsed = ConfigService.Current.SidebarCollapsed;
+        SidebarColumn.Width = new GridLength(collapsed ? 72 : 216);
+        foreach (var button in MainNav.Children.Concat(LibraryNav.Children).OfType<Button>())
+        {
+            if (button.Content is not StackPanel panel) continue;
+            foreach (var label in panel.Children.OfType<TextBlock>())
+            {
+                label.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+                ToolTipService.SetToolTip(button, label.Text);
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label.Text);
+            }
+            button.Padding = collapsed ? new Thickness(16, 0, 16, 0) : new Thickness(12, 0, 12, 0);
+        }
+        LibrarySectionLabel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        PlaylistSectionHeader.Children[0].Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        PlaylistSectionHeader.Margin = collapsed ? new Thickness(0, 12, 12, 4) : new Thickness(12, 14, 4, 5);
+        if (UserButton.Content is Grid user)
+        {
+            user.ColumnDefinitions[0].Width = new GridLength(collapsed ? 32 : 36);
+            UserButton.Padding = collapsed ? new Thickness(10, 0, 10, 0) : new Thickness(12, 0, 12, 0);
+            foreach (var child in user.Children.OfType<FrameworkElement>()) if (Grid.GetColumn(child) > 0) child.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        }
+        SidebarToggleIcon.Glyph = collapsed ? "\uE76C" : "\uE76B";
+        var name = collapsed ? "展开导航栏" : "收起导航栏";
+        ToolTipService.SetToolTip(SidebarToggle, name);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SidebarToggle, name);
+        foreach (var item in LibraryService.Instance.Playlists)
+            if (SidebarPlaylists.ContainerFromItem(item) is ListViewItem container && container.ContentTemplateRoot is Grid grid) ApplyPlaylistRail(grid);
+    }
+
+    private void SidebarPlaylist_Loaded(object sender, RoutedEventArgs e) { if (sender is Grid grid) ApplyPlaylistRail(grid); }
+    private static void ApplyPlaylistRail(Grid grid)
+    {
+        foreach (var label in grid.Children.OfType<TextBlock>()) label.Visibility = ConfigService.Current.SidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     private void OpenNowPlaying()
     {
+        if (!Player.HasCurrent || NowPlayingOverlay.Visibility == Visibility.Visible) return;
         QueueOverlay.Visibility = Visibility.Collapsed;
         NowPlayingOverlay.Visibility = Visibility.Visible;
+        UpdatePlayerInfoMode(pointerInside: true);
         NowPlayingOverlay.Opacity = 0;
 
         var fade = new DoubleAnimation
@@ -720,16 +909,20 @@ public sealed partial class MainWindow : Window
         Storyboard.SetTargetProperty(fade, "Opacity");
         var story = new Storyboard();
         story.Children.Add(fade);
+        var slide = new DoubleAnimation { From = 32, To = 0, Duration = fade.Duration, EasingFunction = fade.EasingFunction };
+        Storyboard.SetTarget(slide, NowPlayingTranslate);
+        Storyboard.SetTargetProperty(slide, "Y");
+        story.Children.Add(slide);
         story.Begin();
 
         UpdateLyricSelection();
     }
 
-    private void PlayerInfo_Tapped(object sender, TappedRoutedEventArgs e) => OpenNowPlaying();
+    private void PlayerInfo_Tapped(object sender, TappedRoutedEventArgs e) { e.Handled = true; OpenNowPlaying(); }
 
     private void FullPlayer_Click(object sender, RoutedEventArgs e) => OpenNowPlaying();
 
-    private void CloseNowPlaying_Click(object sender, RoutedEventArgs e) => NowPlayingOverlay.Visibility = Visibility.Collapsed;
+    private void CloseNowPlaying_Click(object sender, RoutedEventArgs e) { NowPlayingOverlay.Visibility = Visibility.Collapsed; SetFocusMode(false); }
 
     private void FullQueue_Click(object sender, RoutedEventArgs e)
     {
@@ -753,7 +946,7 @@ public sealed partial class MainWindow : Window
 
     private void Lyric_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is LyricLine line) Player.Seek(line.Time);
+        if (e.ClickedItem is LyricLine line) Player.Seek(line.Time - TimeSpan.FromSeconds(ConfigService.Current.LyricOffset));
     }
 
     private void Queue_Click(object sender, RoutedEventArgs e)
@@ -826,6 +1019,8 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        _playerInfoTimer.Stop();
+        ConfigService.Save();
         var presenter = AppWindow.Presenter as OverlappedPresenter;
         var maximized = presenter?.State == OverlappedPresenterState.Maximized;
         ConfigService.SaveWindow(AppWindow.Size.Width, AppWindow.Size.Height, AppWindow.Position.X, AppWindow.Position.Y, maximized);

@@ -50,11 +50,12 @@ object DesktopLyrics {
                 val current = player
                 val track = song
                 if (current != null && track != null && current.currentMediaItem?.mediaId == track.key) {
-                    val index = lines.indexOfLast { it.timeMs <= current.currentPosition }
+                    val lyricPosition = current.currentPosition + ListeningStore(app).lyricOffset
+                    val index = lines.indexOfLast { it.timeMs <= lyricPosition }
                     val text = lines.getOrNull(index)?.text?.takeIf { it.isNotBlank() } ?: "${track.name} · ${track.singer}"
                     val next = lines.getOrNull(index + 1)?.text ?: track.singer
                     val progress = if (index >= 0 && index + 1 < lines.size)
-                        ((current.currentPosition - lines[index].timeMs).toFloat() / (lines[index + 1].timeMs - lines[index].timeMs).coerceAtLeast(1)).coerceIn(0f, 1f) else 1f
+                        ((lyricPosition - lines[index].timeMs).toFloat() / (lines[index + 1].timeMs - lines[index].timeMs).coerceAtLeast(1)).coerceIn(0f, 1f) else 1f
                     try {
                         val view = overlay ?: LyricView(app).also {
                             manager?.addView(it, it.params); overlay = it
@@ -114,12 +115,17 @@ object DesktopLyrics {
             drawLine(canvas, first, 41 * density, prefs.lyricSize * scaled, colors, progress)
             if (prefs.lyricDoubleLine) drawLine(canvas, second, 78 * density, prefs.lyricSize * scaled * .7f, intArrayOf(0xffdce6f1.toInt(), 0xffdce6f1.toInt()), 1f)
             if (!prefs.lyricLocked) {
-                paint.shader = null; paint.clearShadowLayer(); paint.typeface = android.graphics.Typeface.DEFAULT
-                paint.style = Paint.Style.FILL; paint.textSize = 10 * scaled; paint.color = Color.LTGRAY
-                paint.textAlign = Paint.Align.LEFT
-                canvas.drawText("拖动移动", 14 * density, height - 12 * density, paint)
-                paint.textAlign = Paint.Align.RIGHT
-                canvas.drawText("锁定    × 关闭", width - 14 * density, height - 12 * density, paint)
+                paint.shader = null; paint.clearShadowLayer()
+                paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.8f * density; paint.color = Color.LTGRAY
+                val centerY = height - 16 * density
+                val lockX = width - 88 * density
+                canvas.drawRoundRect(lockX - 6 * density, centerY - 2 * density, lockX + 6 * density,
+                    centerY + 7 * density, 2 * density, 2 * density, paint)
+                canvas.drawArc(lockX - 4 * density, centerY - 9 * density, lockX + 4 * density,
+                    centerY + 3 * density, 180f, 180f, false, paint)
+                val closeX = width - 32 * density
+                canvas.drawLine(closeX - 5 * density, centerY - 5 * density, closeX + 5 * density, centerY + 5 * density, paint)
+                canvas.drawLine(closeX + 5 * density, centerY - 5 * density, closeX - 5 * density, centerY + 5 * density, paint)
             }
         }
         private fun drawLine(canvas: Canvas, text: String, baseline: Float, size: Float, colors: IntArray, value: Float) {

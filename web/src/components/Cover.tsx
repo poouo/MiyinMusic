@@ -4,7 +4,6 @@ import { songKey } from '../lib/types'
 import type { Song } from '../lib/types'
 
 const picCache = new Map<string, string | null>()
-const objectInitial = new Map<string, string>()
 
 export function hueOf(key: string): number {
   let hash = 0
@@ -99,7 +98,6 @@ export function Cover({ song, src, className = '', style, radius, lazy = true, c
     }
   }, [song, url, visible, key])
 
-  const hue = hueOf(key)
   return (
     <div
       ref={ref}
@@ -108,7 +106,6 @@ export function Cover({ song, src, className = '', style, radius, lazy = true, c
       title={title}
       style={{
         borderRadius: radius ?? undefined,
-        background: 'linear-gradient(145deg, hsl(' + hue + ' 62% 42%), hsl(' + (hue + 46) % 360 + ' 58% 26%))',
         ...style,
       }}
     >

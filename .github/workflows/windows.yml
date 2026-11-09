@@ -8,24 +8,96 @@ on:
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
+concurrency:
+  group: windows-client-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
+env:
+  PROJECT: desktop-winui/MiYin.Desktop/MiYin.Desktop.csproj
+  PUBLISH_DIR: desktop-winui/publish/win-x64
+  PACKAGE_NAME: MiYin-Windows-x64
+
 jobs:
   build:
+    name: Publish Windows x64
     runs-on: windows-latest
+    timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Publish native Windows client
+
+      - name: Restore dependencies
+        run: dotnet restore $env:PROJECT
+
+      - name: Check playback and lyrics behavior
+        run: dotnet run --project desktop-winui/tests/PlaybackOrder.Tests -c Release
+
+      - name: Publish self-contained client
         shell: pwsh
         run: |
-          dotnet publish desktop-winui/MiYin.Desktop/MiYin.Desktop.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishSingleFile=false -o desktop-winui/publish/win-x64
+          $ErrorActionPreference = 'Stop'
+          dotnet publish $env:PROJECT `
+            --no-restore `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:Platform=x64 `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishSingleFile=false `
+            -p:ContinuousIntegrationBuild=true `
+            -o $env:PUBLISH_DIR
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item desktop-winui/PACKAGE-README.txt desktop-winui/publish/win-x64/README.txt
-      - uses: actions/upload-artifact@v4
+
+          Copy-Item desktop-winui/PACKAGE-README.txt "$env:PUBLISH_DIR/README.txt"
+
+          $exe = Join-Path $env:PUBLISH_DIR 'MiYin.exe'
+          $pri = Join-Path $env:PUBLISH_DIR 'MiYin.pri'
+          $xbfCount = (Get-ChildItem $env:PUBLISH_DIR -Filter '*.xbf' -Recurse).Count
+          if (-not (Test-Path $exe)) { throw 'MiYin.exe was not produced' }
+          if (-not (Test-Path $pri)) { throw 'MiYin.pri was not produced' }
+          if ($xbfCount -eq 0) { throw 'No XBF resources were produced' }
+          foreach ($file in @('coreclr.dll', 'Microsoft.UI.Xaml.dll')) {
+            if (-not (Test-Path (Join-Path $env:PUBLISH_DIR $file))) { throw "Missing runtime: $file" }
+          }
+
+          @{
+            commit = '${{ github.sha }}'
+            run = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            configuration = 'Release'
+            runtime = 'win-x64'
+          } | ConvertTo-Json | Set-Content "$env:PUBLISH_DIR/build-info.json" -Encoding utf8
+
+          "Windows package: $env:PACKAGE_NAME" >> $env:GITHUB_STEP_SUMMARY
+          "- Output: $env:PUBLISH_DIR" >> $env:GITHUB_STEP_SUMMARY
+          "- XBF resources: $xbfCount" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Create clean ZIP package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = "desktop-winui/publish/$env:PACKAGE_NAME.zip"
+          Compress-Archive -Path "$env:PUBLISH_DIR/*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($zip))" | Set-Content "$zip.sha256" -Encoding ascii
+          "- ZIP: $([IO.Path]::GetFileName($zip))" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
         with:
-          name: miyin-windows-x64
-          path: desktop-winui/publish/win-x64/
+          name: ${{ env.PACKAGE_NAME }}
+          path: |
+            desktop-winui/publish/${{ env.PACKAGE_NAME }}.zip
+            desktop-winui/publish/${{ env.PACKAGE_NAME }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

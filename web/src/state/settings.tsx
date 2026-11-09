@@ -14,12 +14,12 @@ export interface ThemeOption {
 }
 
 export const THEMES: ThemeOption[] = [
-  { id: 'auto', name: '跟随系统', scheme: 'auto', dots: ['#0b0d16', '#f4f5fa', '#7d8bff'] },
-  { id: 'dark', name: '极光', scheme: 'dark', dots: ['#0b0d16', '#7d8bff', '#ff5f8f'] },
-  { id: 'light', name: '日光', scheme: 'light', dots: ['#f4f5fa', '#5b6cf0', '#ec4c7d'] },
-  { id: 'midnight', name: '午夜蓝', scheme: 'dark', dots: ['#04060f', '#4f8cff', '#7c5cff'] },
-  { id: 'forest', name: '森林', scheme: 'dark', dots: ['#05120d', '#2fbf86', '#a3e635'] },
-  { id: 'sakura', name: '樱花', scheme: 'light', dots: ['#fdf6f8', '#e0568a', '#a06bff'] },
+  { id: 'auto', name: '跟随系统', scheme: 'auto', dots: ['#151515', '#faf9f6', '#ed9668'] },
+  { id: 'dark', name: '石墨', scheme: 'dark', dots: ['#151515', '#ed9668', '#a3a3a0'] },
+  { id: 'light', name: '日光', scheme: 'light', dots: ['#faf9f6', '#a74b28', '#767570'] },
+  { id: 'midnight', name: '午夜蓝', scheme: 'dark', dots: ['#141618', '#8eafd9', '#a3a7ad'] },
+  { id: 'forest', name: '森林', scheme: 'dark', dots: ['#141715', '#90b59a', '#a4aaa5'] },
+  { id: 'sakura', name: '樱花', scheme: 'light', dots: ['#fcf9fa', '#a14364', '#80777a'] },
   { id: 'mono', name: '纯黑', scheme: 'dark', dots: ['#000000', '#f5f5f5', '#9a9a9a'] },
 ]
 
@@ -33,6 +33,7 @@ export interface Settings {
   showTranslation: boolean
   /** 播放条是否收成紧凑模式 */
   compactPlayer: boolean
+  sidebarCollapsed: boolean
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
   showTranslation: true,
   compactPlayer: false,
+  sidebarCollapsed: false,
 }
 
 interface SettingsApi {
@@ -71,6 +73,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     saveJson('settings.v1', settings)
+    document.documentElement.dataset.sidebarCollapsed = String(settings.sidebarCollapsed)
   }, [settings])
 
   useEffect(() => {

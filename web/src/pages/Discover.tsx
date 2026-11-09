@@ -15,17 +15,16 @@ import { PlaylistTile } from '../components/PlaylistTile'
 import { SingerTile } from '../components/SingerTile'
 import { SongList } from '../components/SongList'
 import { SongTile } from '../components/SongTile'
+import { ForYou } from '../components/ForYou'
 import {
-  ActivityIcon,
   ChevronRightIcon,
   ClockIcon,
   DiscIcon,
   FolderIcon,
-  ListMusicIcon,
+  MusicIcon,
   PlayIcon,
   PlusIcon,
   SearchIcon,
-  UsersIcon,
 } from '../components/Icons'
 
 let chartsCache: ChartInfo[] | null = null
@@ -40,6 +39,7 @@ export function DiscoverPage() {
   const { settings, update } = useSettings()
 
   const [charts, setCharts] = useState<ChartInfo[]>(chartsCache ?? [])
+  const [chartsLoading, setChartsLoading] = useState(!chartsCache)
   const [sources, setSources] = useState<SourceInfo[]>(sourcesCache ?? [])
   const [playlists, setPlaylists] = useState<PlaylistInfo[]>(playlistsCache ?? [])
   const [playlistsLoading, setPlaylistsLoading] = useState(!playlistsCache)
@@ -80,6 +80,7 @@ export function DiscoverPage() {
           if (!cancelled) setCharts(result.charts)
         })
         .catch(() => undefined)
+        .finally(() => { if (!cancelled) setChartsLoading(false) })
     }
 
     if (sourcesCache) setSources(sourcesCache)
@@ -160,42 +161,56 @@ export function DiscoverPage() {
     navigate('/search?q=' + encodeURIComponent(keyword) + '&platform=' + settings.defaultPlatform)
   }
 
-  const showPlaylists = playlistsLoading || playlists.length > 0
-  const showNewSongs = newSongsLoading || newSongs.length > 0
-  const showSingers = singersLoading || singers.length > 0
+  const featured = playlists[0]
 
   return (
-    <div className="fade-in">
+    <div className="discover-page fade-in">
       <section className="hero">
-        <div className="hero__glow" />
-        <div className="hero__eyebrow">发现你的下一首单曲</div>
-        <h1 className="hero__title">
-          听见此刻，
-          <br />
-          从觅音开始。
-        </h1>
-        <form className="searchbox hero__search" onSubmit={submit}>
-          <SearchIcon size={19} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索歌曲、歌手、专辑…"
-            aria-label="搜索"
-          />
-          <button type="submit" className="btn btn--primary btn--sm">
-            搜索
-          </button>
-        </form>
-        <div className="chip-row" style={{ marginTop: 16 }}>
-          {PLATFORMS.map((platform) => (
-            <button
-              key={platform}
-              className={'chip' + (settings.defaultPlatform === platform ? ' is-active' : '')}
-              onClick={() => update({ defaultPlatform: platform })}
-            >
-              {PLATFORM_NAMES[platform]}
+        <div className="hero__content">
+          <div className="hero__eyebrow"><span className="record-tick" /> 觅音 · 音乐发现</div>
+          <h1 className="hero__title">
+            从五个平台，
+            <br />
+            找到你的下一首
+          </h1>
+          <p className="hero__description">搜索想听的歌，也为偶然的喜欢留一点位置</p>
+          <form className="searchbox hero__search" onSubmit={submit}>
+            <SearchIcon size={19} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="歌曲、歌手或专辑"
+              aria-label="搜索"
+            />
+            <button type="submit" className="btn btn--primary btn--sm">
+              搜索
             </button>
-          ))}
+          </form>
+          <div className="chip-row hero__platforms" aria-label="搜索平台">
+            {PLATFORMS.map((platform) => (
+              <button
+                key={platform}
+                className={'chip' + (settings.defaultPlatform === platform ? ' is-active' : '')}
+                aria-pressed={settings.defaultPlatform === platform}
+                onClick={() => update({ defaultPlatform: platform })}
+              >
+                {PLATFORM_NAMES[platform]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="hero__feature">
+          <div className="record-scene" aria-hidden="true">
+            <div className="record"><div className="record__label"><DiscIcon size={28} /></div></div>
+            {featured ? <Cover src={featured.cover} className="record-sleeve" radius={8} lazy={false} /> : <div className="record-sleeve record-sleeve--empty"><MusicIcon size={40} /><span>觅音</span></div>}
+          </div>
+          {featured ? (
+            <button className="hero__feature-link" onClick={() => navigate('/square/' + encodeURIComponent(featured.id))}>
+              <span className="hero__feature-label">精选歌单</span>
+              <span className="hero__feature-name">{featured.name}</span>
+              <span className="hero__feature-action">听听这张歌单 <ChevronRightIcon size={16} /></span>
+            </button>
+          ) : <div className="hero__feature-caption">每一次寻找，都是新的相遇</div>}
         </div>
         <div className="stat-strip">
           <div className="stat">
@@ -217,51 +232,54 @@ export function DiscoverPage() {
         </div>
       </section>
 
-      {showPlaylists ? (
-        <section className="section">
-          <div className="section__head">
-            <div className="section__title">
-              <ListMusicIcon size={18} /> 推荐歌单
-            </div>
-            <button className="section__more" onClick={() => navigate('/square')}>
-              全部歌单 <ChevronRightIcon size={13} />
-            </button>
+      <ForYou />
+      <section className="section">
+        <div className="section__head">
+          <div className="section__title">
+            推荐歌单
           </div>
-          {playlistsLoading ? (
-            <div className="grid-cards">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="skeleton" style={{ aspectRatio: '1 / 1.22', borderRadius: 16 }} />
-              ))}
-            </div>
-          ) : (
-            <div className="grid-cards">
-              {playlists.map((playlist) => (
-                <PlaylistTile
-                  key={playlist.id}
-                  playlist={playlist}
-                  onClick={() => navigate('/square/' + encodeURIComponent(playlist.id))}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+          <button className="section__more" onClick={() => navigate('/square')}>
+            全部歌单 <ChevronRightIcon size={13} />
+          </button>
+        </div>
+        {playlistsLoading ? (
+          <div className="grid-cards">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="skeleton" style={{ aspectRatio: '1 / 1.22', borderRadius: 16 }} />
+            ))}
+          </div>
+        ) : playlists.length === 0 ? (
+          <div className="section-unavailable">暂时没有推荐歌单，可稍后重试或搜索想听的歌</div>
+        ) : (
+          <div className="grid-cards">
+            {playlists.map((playlist) => (
+              <PlaylistTile
+                key={playlist.id}
+                playlist={playlist}
+                onClick={() => navigate('/square/' + encodeURIComponent(playlist.id))}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="section">
         <div className="section__head">
           <div className="section__title">
-            <ActivityIcon size={18} /> 排行榜
+            排行榜
           </div>
           <button className="section__more" onClick={() => navigate('/charts')}>
             全部榜单 <ChevronRightIcon size={13} />
           </button>
         </div>
-        {charts.length === 0 ? (
-          <div className="row gap-12">
+        {chartsLoading ? (
+          <div className="chart-scroller">
             {Array.from({ length: 5 }).map((_, index) => (
               <div key={index} className="skeleton" style={{ width: 156, height: 196, borderRadius: 16 }} />
             ))}
           </div>
+        ) : charts.length === 0 ? (
+          <div className="section-unavailable">排行榜暂时不可用，请稍后重试</div>
         ) : (
           <div className="chart-scroller">
             {mixedCharts.map((chart) => (
@@ -271,85 +289,85 @@ export function DiscoverPage() {
         )}
       </section>
 
-      {showNewSongs ? (
-        <section className="section">
-          <div className="section__head">
-            <div className="section__title">
-              <DiscIcon size={18} /> 新歌速递
-            </div>
-            {newSongs.length ? (
-              <button className="section__more" onClick={() => player.playSongs(newSongs, 0)}>
-                <PlayIcon size={12} /> 播放全部
-              </button>
-            ) : null}
+      <section className="section">
+        <div className="section__head">
+          <div className="section__title">
+            新歌速递
           </div>
-          {newSongsLoading ? (
-            <div className="rail">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="skeleton" style={{ height: 214, borderRadius: 16 }} />
-              ))}
-            </div>
-          ) : (
-            <div className="rail">
-              {newSongs.map((song, index) => (
-                <div className="rail__item" key={song.platform + '_' + song.songmid}>
-                  <SongTile song={song} onClick={() => player.playSongs(newSongs, index)} />
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+          {newSongs.length ? (
+            <button className="section__more" onClick={() => player.playSongs(newSongs, 0)}>
+              <PlayIcon size={12} /> 播放全部
+            </button>
+          ) : null}
+        </div>
+        {newSongsLoading ? (
+          <div className="rail">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="skeleton" style={{ height: 214, borderRadius: 16 }} />
+            ))}
+          </div>
+        ) : newSongs.length === 0 ? (
+          <div className="section-unavailable">新歌暂时不可用，试试搜索喜欢的歌手</div>
+        ) : (
+          <div className="rail">
+            {newSongs.map((song, index) => (
+              <div className="rail__item" key={song.platform + '_' + song.songmid}>
+                <SongTile song={song} onClick={() => player.playSongs(newSongs, index)} />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {showSingers ? (
-        <section className="section">
-          <div className="section__head">
-            <div className="section__title">
-              <UsersIcon size={18} /> 热门歌手
-            </div>
-            <span className="section__more" style={{ pointerEvents: 'none' }}>
-              来自 QQ 音乐
-            </span>
+      <section className="section">
+        <div className="section__head">
+          <div className="section__title">
+            热门歌手
           </div>
-          {singersLoading ? (
-            <div className="rail rail--singers">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="skeleton" style={{ height: 158, borderRadius: 999 }} />
-              ))}
-            </div>
-          ) : (
-            <div className="rail rail--singers">
-              {singers.map((singer) => (
-                <div className="rail__item" key={singer.id}>
-                  <SingerTile
-                    singer={singer}
-                    onClick={() => navigate('/singer/' + encodeURIComponent(singer.id) + '?name=' + encodeURIComponent(singer.name))}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+          <span className="section__more" style={{ pointerEvents: 'none' }}>
+            来自 QQ 音乐
+          </span>
+        </div>
+        {singersLoading ? (
+          <div className="rail rail--singers">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className="skeleton" style={{ height: 158, borderRadius: 999 }} />
+            ))}
+          </div>
+        ) : singers.length === 0 ? (
+          <div className="section-unavailable">歌手列表暂时不可用，请稍后重试</div>
+        ) : (
+          <div className="rail rail--singers">
+            {singers.map((singer) => (
+              <div className="rail__item" key={singer.id}>
+                <SingerTile
+                  singer={singer}
+                  onClick={() => navigate('/singer/' + encodeURIComponent(singer.id) + '?name=' + encodeURIComponent(singer.name))}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {history.length > 0 ? (
-        <section className="section">
-          <div className="section__head">
-            <div className="section__title">
-              <ClockIcon size={18} /> 最近播放
-            </div>
-            <button className="section__more" onClick={() => navigate('/library')}>
-              查看全部 <ChevronRightIcon size={13} />
-            </button>
+      <section className="section">
+        <div className="section__head">
+          <div className="section__title">
+            <ClockIcon size={18} /> 最近播放
           </div>
-          <SongList
-            songs={history}
-            onPlay={(index) => player.playSongs(history, index)}
-            onAddToPlaylist={setAddTarget}
-            showIndex={false}
-            showAlbum={false}
-          />
-        </section>
+          <button className="section__more" onClick={() => navigate('/library')}>
+            查看全部 <ChevronRightIcon size={13} />
+          </button>
+        </div>
+        <SongList
+          songs={history}
+          onPlay={(index) => player.playSongs(history, index)}
+          onAddToPlaylist={setAddTarget}
+          showIndex={false}
+          showAlbum={false}
+        />
+      </section>
       ) : null}
 
       <section className="section">

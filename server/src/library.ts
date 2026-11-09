@@ -1,7 +1,7 @@
 import { getDb, p, sql, transaction } from './db.js'
 import { HttpError } from './errors.js'
 import { shortId, findById } from './auth.js'
-import type { Platform, Quality, Song } from './types.js'
+import type { Platform, Quality, Song, SingerInfo } from './types.js'
 import { PLATFORMS, QUALITIES } from './types.js'
 
 export interface Playlist {
@@ -42,6 +42,17 @@ export function songKey(song: Pick<Song, 'platform' | 'songmid'>): string {
   return String(song.platform) + '_' + String(song.songmid)
 }
 
+export function sanitizeSingers(value: unknown): SingerInfo[] {
+  const result = new Map<string, SingerInfo>()
+  for (const raw of Array.isArray(value) ? value : []) {
+    if (!raw || typeof raw !== 'object' || !['tx', 'wy'].includes(raw.platform) || typeof raw.name !== 'string' || !raw.name.trim() || typeof raw.id !== 'string' || !/^(?:(?:tx|wy)-)?[\w]{1,64}$/.test(raw.id)) continue
+    const id = raw.platform + '-' + raw.id.replace(/^(tx|wy)-/, '')
+    if (!result.has(id)) result.set(id, { id, platform: raw.platform, name: raw.name.trim().slice(0, 80), pic: typeof raw.pic === 'string' ? raw.pic.slice(0, 500) : null })
+    if (result.size >= 100) break
+  }
+  return [...result.values()]
+}
+
 /** 只保留白名单字段，避免客户端塞入无关数据 */
 export function sanitizeSong(input: unknown): Song {
   const raw = (input ?? {}) as Record<string, unknown>
@@ -63,6 +74,7 @@ export function sanitizeSong(input: unknown): Song {
     qualities,
   }
   const optional: (keyof Song)[] = ['hash', 'albumId', 'albumMid', 'strMediaMid', 'copyrightId', 'lrcUrl', 'songId']
+  if (Array.isArray(raw.artists)) song.artists = raw.artists.slice(0, 10).filter(item => item && typeof item === 'object' && /^[\w-]{1,64}$/.test(String(item.id)) && typeof item.name === 'string').map(item => ({ id: String(item.id), name: item.name.slice(0, 80) }))
   for (const key of optional) {
     const value = raw[key]
     if (typeof value === 'string' && value && value.length <= 200) {
@@ -83,17 +95,23 @@ function parseSong(json: unknown): Song | null {
   }
 }
 
-export function getLibrary(userId: string): UserLibrary {
+/** Read favorites independently so admin inspection does not load playlists or history. */
+export function getFavorites(userId: string): FavoriteEntry[] {
   const db = getDb()
   const favoriteRows = db
-    .prepare('SELECT song_json, added_at FROM favorites WHERE user_id = ? ORDER BY added_at DESC')
+    .prepare('SELECT song_json, added_at FROM favorites WHERE user_id = ? ORDER BY added_at DESC, song_key ASC')
     .all(userId) as { song_json: string; added_at: number }[]
   const favorites: FavoriteEntry[] = []
   for (const row of favoriteRows) {
     const song = parseSong(row.song_json)
     if (song) favorites.push({ song, addedAt: Number(row.added_at) })
   }
+  return favorites
+}
 
+export function getLibrary(userId: string): UserLibrary {
+  const db = getDb()
+  const favorites = getFavorites(userId)
   const playlistRows = db
     .prepare('SELECT id, name, description, created_at, updated_at FROM playlists WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId) as { id: string; name: string; description: string; created_at: number; updated_at: number }[]
@@ -315,7 +333,7 @@ export function updateSettings(userId: string, patch: Record<string, unknown>): 
   transaction(() => {
     for (const [key, value] of Object.entries(patch ?? {})) {
       if (typeof key !== 'string' || key.length > 60) continue
-      upsert.run(userId, key, JSON.stringify(value ?? null))
+      upsert.run(userId, key, JSON.stringify(key === 'favoriteSingers' ? sanitizeSingers(value) : value ?? null))
     }
   })
   return getLibrary(userId)
@@ -390,7 +408,7 @@ export function importLibrary(
     db.prepare('DELETE FROM history WHERE user_id = ? AND song_key NOT IN (SELECT song_key FROM history WHERE user_id = ? ORDER BY played_at DESC LIMIT ?)')
       .run(userId, userId, LIMITS.history)
     const upsert = db.prepare('INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value')
-    for (const [key, value] of settings) upsert.run(userId, key, JSON.stringify(value ?? null))
+    for (const [key, value] of settings) upsert.run(userId, key, JSON.stringify(key === 'favoriteSingers' ? sanitizeSingers(value) : value ?? null))
   })
   return getLibrary(userId)
 }

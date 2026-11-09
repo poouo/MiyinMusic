@@ -10,7 +10,7 @@ namespace MiYin.Desktop.Views;
 
 public sealed partial class LibraryPage : Page
 {
-    private enum Mode { Liked, Recent, Playlist }
+    private enum Mode { Liked, Recent, Playlist, Local }
 
     private Mode _mode = Mode.Liked;
     private string? _playlistId;
@@ -31,6 +31,7 @@ public sealed partial class LibraryPage : Page
         {
             _mode = Mode.Recent;
         }
+        else if (e.Parameter is string local && local == "local") _mode = Mode.Local;
         else if (e.Parameter is Playlist playlist)
         {
             _mode = Mode.Playlist;
@@ -60,6 +61,11 @@ public sealed partial class LibraryPage : Page
 
         switch (_mode)
         {
+            case Mode.Local:
+                _songs.AddRange(LocalMusicService.Instance.Songs);
+                kind = "本机音乐"; title = "本地音乐"; subtitle = $"{_songs.Count} 首 · 原文件保留在选择的目录";
+                emptyText = "在设置中扫描本地音乐目录"; cover = "";
+                break;
             case Mode.Liked:
                 _songs.AddRange(LibraryService.Instance.Favorites);
                 kind = "我的喜欢";
@@ -104,7 +110,7 @@ public sealed partial class LibraryPage : Page
 
         KindText.Text = kind;
         TitleText.Text = title;
-        SubtitleText.Text = subtitle;
+        SubtitleText.Text = subtitle + (LibraryService.Instance.IsOffline && _mode != Mode.Local ? " · 离线快照" : "");
         EmptyText.Text = emptyText;
         EmptyText.Visibility = _songs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         Songs.Visibility = _songs.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

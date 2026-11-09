@@ -89,6 +89,7 @@ class ApiClient(context: Context) {
     @PublishedApi
     internal suspend fun raw(method: String, path: String, body: String? = null): String =
         withContext(Dispatchers.IO) {
+            val session = cookieHeader()
             val builder = Request.Builder()
                 .url(BASE_URL + path)
                 .header("User-Agent", USER_AGENT)
@@ -100,6 +101,7 @@ class ApiClient(context: Context) {
             }
             client.newCall(builder.build()).execute().use { response ->
                 val text = response.body?.string().orEmpty()
+                if (!path.startsWith("/api/auth/") && session != cookieHeader()) throw kotlinx.coroutines.CancellationException("账号已切换，忽略旧请求")
                 if (!response.isSuccessful) {
                     val message = runCatching {
                         json.decodeFromString<ApiErrorEnvelope>(text).error?.message
@@ -146,6 +148,24 @@ class ApiClient(context: Context) {
 
     suspend fun library(): LibraryData = get<LibraryResponse>("/api/library").library
 
+    suspend fun createPlaylist(name: String): LibraryData =
+        json.decodeFromString<LibraryResponse>(raw("POST", "/api/library/playlists", json.encodeToString(mapOf("name" to name)))).library
+
+    suspend fun renamePlaylist(id: String, name: String): LibraryData =
+        json.decodeFromString<LibraryResponse>(raw("PATCH", "/api/library/playlists/$id", json.encodeToString(mapOf("name" to name)))).library
+
+    suspend fun deletePlaylist(id: String): LibraryData = delete<LibraryResponse>("/api/library/playlists/$id").library
+
+    suspend fun addPlaylistSong(id: String, song: Song): LibraryData =
+        post<FavoriteRequest, LibraryResponse>("/api/library/playlists/$id/songs", FavoriteRequest(song)).library
+
+    suspend fun removePlaylistSong(id: String, song: Song): LibraryData =
+        delete<LibraryResponse>("/api/library/playlists/$id/songs/${song.key}").library
+
+    suspend fun reorderPlaylist(id: String, songs: List<Song>): LibraryData =
+        json.decodeFromString<LibraryResponse>(raw("PUT", "/api/library/playlists/$id/order",
+            json.encodeToString(mapOf("keys" to songs.map { it.key })))).library
+
     suspend fun addFavorite(song: Song): LibraryData =
         post<FavoriteRequest, LibraryResponse>("/api/library/favorites", FavoriteRequest(song)).library
 
@@ -165,6 +185,10 @@ class ApiClient(context: Context) {
 
     suspend fun singers(limit: Int = 12): List<SingerInfo> =
         get<SingersResponse>("/api/discover/singers?limit=" + limit).singers
+
+    suspend fun singer(id: String, name: String): SingerDetailResult =
+        get<SingerDetailResult>("/api/singer/" + java.net.URLEncoder.encode(id, "UTF-8") +
+            "?name=" + java.net.URLEncoder.encode(name, "UTF-8"))
 
     suspend fun search(platform: String, query: String, page: Int = 1, limit: Int = 30): SearchResult {
         val encoded = java.net.URLEncoder.encode(query, "UTF-8")
@@ -197,6 +221,10 @@ class ApiClient(context: Context) {
 
     suspend fun sharedPlaylist(text: String): PlaylistDetailResult {
         val id = resolvePlaylistLink(text)
+        return fullPlaylist(id)
+    }
+
+    suspend fun fullPlaylist(id: String): PlaylistDetailResult {
         var detail = playlist(id)
         val songs = detail.songs.toMutableList()
         while (detail.hasMore) {
@@ -207,6 +235,7 @@ class ApiClient(context: Context) {
             check(songs.size <= 2000) { "单个歌单最多导入 2000 首，请拆分后再导入" }
         }
         check(songs.isNotEmpty()) { "歌单为空或没有可公开访问的歌曲" }
+        check(songs.size <= 2000 && songs.size >= detail.total) { "歌单未读取完整或超过 2000 首限制" }
         return detail.copy(songs = songs.distinctBy { it.key }, hasMore = false)
     }
 

@@ -22,6 +22,8 @@ const { HttpError } = await import('../src/errors.js')
 const { sendError } = await import('../src/http-util.js')
 const guard = await import('../src/login-guard.js')
 const config = await import('../src/app-config.js')
+const audioCache = await import('../src/audio-cache.js')
+const { sourceManager } = await import('../src/lx/manager.js')
 let server: http.Server, base: string, actor: string, owner: string, target: string, ordinary: string
 let adminToken: string, userToken: string, playlistId: string
 const song = (id: number) => ({ platform: 'wy' as const, songmid: String(id), name: '歌曲 ' + id, singer: '歌手', albumName: '', interval: 200, qualities: ['320k'], hash: 'provider-field' })
@@ -49,6 +51,7 @@ before(async () => {
 })
 beforeEach(() => {
   getDb().prepare('DELETE FROM playlists').run()
+  getDb().prepare('DELETE FROM favorites').run()
   playlistId = library.createPlaylist(owner, { name: '原歌单', description: '说明' }).playlists[0].id
   library.addPlaylistSong(owner, playlistId, song(2)); library.addPlaylistSong(owner, playlistId, song(1))
 })
@@ -68,6 +71,22 @@ test('every playlist operation is hidden from guests and ordinary users', async 
     }
   }
 })
+
+test('singer follows are account scoped, idempotent, removable and persist in the library', async () => {
+  const endpoint = '/api/library/singers'
+  const singer = { id: '0025NhlN2yWrP4', platform: 'tx', name: '周杰伦' }
+  assert.equal((await request(endpoint, 'POST', { singer }, '')).status, 401)
+  assert.equal((await request('/api/playlists/preview', 'POST', { id: 'invalid' }, '')).status, 401)
+  for (let i = 0; i < 2; i++) assert.equal((await request(endpoint, 'POST', { singer }, userToken)).status, 200)
+  const data = await (await request('/api/library', 'GET', undefined, userToken)).json() as any
+  assert.deepEqual(data.library.favoriteSingers.map((item: any) => item.id), ['tx-0025NhlN2yWrP4'])
+  assert.equal(library.getLibrary(owner).settings.favoriteSingers, undefined)
+  assert.equal((await request(endpoint + '/tx-0025NhlN2yWrP4', 'DELETE', undefined, userToken)).status, 200)
+  assert.equal((await (await request('/api/library', 'GET', undefined, userToken)).json() as any).library.favoriteSingers.length, 0)
+  assert.equal((await request(endpoint, 'POST', { singer: { ...singer, platform: 'local' } }, userToken)).status, 400)
+  assert.equal((await request(endpoint, 'POST', { singer: { ...singer, id: 123 } }, userToken)).status, 400)
+  assert.equal((await request(endpoint, 'POST', { singer: { ...singer, name: {} } }, userToken)).status, 400)
+})
 test('list summaries and details enforce the specified owner', async () => {
   const response = await request(url('')); assert.equal(response.status, 200)
   const data = await response.json() as any
@@ -75,6 +94,70 @@ test('list summaries and details enforce the specified owner', async () => {
   assert.equal((await request(url(playlistId, target))).status, 404)
   const detail = await (await request(url())).json() as any
   assert.deepEqual(detail.playlist.songs.map((s: any) => s.songmid), ['2', '1'])
+})
+
+test('malformed followed singers in old settings cannot break library or follow operations', async () => {
+  getDb().prepare('INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value')
+    .run(ordinary, 'favoriteSingers', JSON.stringify([null, 1, {}, { id: '123', platform: 'local', name: 'bad' }, { id: '6452', platform: 'wy', name: '周杰伦' }]))
+  const data = await (await request('/api/library', 'GET', undefined, userToken)).json() as any
+  assert.deepEqual(data.library.favoriteSingers.map((item: any) => item.id), ['wy-6452'])
+  assert.equal((await request('/api/library/singers', 'POST', { singer: { id: 'tx-0025NhlN2yWrP4', platform: 'tx', name: '周杰伦' } }, userToken)).status, 200)
+  assert.equal((await request('/api/library/singers/wy-6452', 'DELETE', undefined, userToken)).status, 200)
+  library.updateSettings(ordinary, { favoriteSingers: [] })
+})
+
+test('user favorites can only be inspected by admins and never expose another owner', async () => {
+  library.addFavorite(owner, song(4))
+  library.addFavorite(target, song(9))
+  const endpoint = '/api/admin/users/' + owner + '/favorites'
+  for (const token of ['', userToken]) {
+    assert.equal((await request(endpoint, 'GET', undefined, token)).status, 404)
+  }
+  const response = await request(endpoint)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.user.id, owner)
+  assert.equal(data.totalFavorites, 1)
+  assert.deepEqual(data.favorites.map((entry: any) => entry.song.songmid), ['4'])
+  assert.equal(data.favorites[0].song.hash, 'provider-field')
+  assert.ok(data.favorites[0].addedAt > 0)
+  assert.equal(data.history, undefined)
+  assert.equal(data.settings, undefined)
+  assert.equal(data.user.passwordHash, undefined)
+  const other = await (await request('/api/admin/users/' + target + '/favorites')).json() as any
+  assert.deepEqual(other.favorites.map((entry: any) => entry.song.songmid), ['9'])
+  assert.equal((await request('/api/admin/users/missing/favorites')).status, 404)
+  assert.equal((await request(endpoint, 'DELETE')).status, 404)
+  assert.equal(library.getFavorites(owner).length, 1)
+})
+
+test('favorites support stable newest-first pagination and song, singer or album search', async () => {
+  const endpoint = '/api/admin/users/' + owner + '/favorites'
+  for (let i = 1; i <= 51; i++) {
+    library.addFavorite(owner, { ...song(i), singer: i === 51 ? 'Singer A' : '歌手', albumName: i === 1 ? 'Special Album' : '' })
+    getDb().prepare('UPDATE favorites SET added_at = ? WHERE user_id = ? AND song_key = ?').run(1000 + i, owner, 'wy_' + i)
+  }
+  const first = await (await request(endpoint)).json() as any
+  assert.equal(first.favorites.length, 50)
+  assert.equal(first.total, 51)
+  assert.equal(first.hasMore, true)
+  assert.equal(first.favorites[0].song.songmid, '51')
+  const second = await (await request(endpoint + '?page=2')).json() as any
+  assert.deepEqual(second.favorites.map((entry: any) => entry.song.songmid), ['1'])
+  assert.equal(second.hasMore, false)
+  for (const [query, id] of [['歌曲 51', '51'], ['singer a', '51'], ['special album', '1']]) {
+    const match = await (await request(endpoint + '?q=' + encodeURIComponent(query))).json() as any
+    assert.equal(match.total, 1)
+    assert.equal(match.totalFavorites, 51)
+    assert.equal(match.favorites[0].song.songmid, id)
+  }
+  const empty = await (await request(endpoint + '?q=absent')).json() as any
+  assert.equal(empty.total, 0)
+  assert.deepEqual(empty.favorites, [])
+  const invalid = await (await request(endpoint + '?page=NaN&limit=Infinity')).json() as any
+  assert.equal(invalid.page, 1)
+  assert.equal(invalid.limit, 50)
+  assert.equal((await (await request(endpoint + '?limit=999')).json() as any).limit, 100)
 })
 test('copies preserve order and provider fields and remain independent', async () => {
   const response = await request(url() + '/copy', 'POST', { targetUserId: target, name: '复制的歌单' })
@@ -127,4 +210,59 @@ test('admin HTML uses a separate entry point, including deep links', async () =>
     const response = await fetch(base + path); assert.equal(response.status, 200)
     const html = await response.text(); assert.match(html, /assets\/admin-/); assert.doesNotMatch(html, /assets\/player-/)
   }
+})
+
+function cachedPlaybackSong(quality: '128k' | '320k') {
+  config.updateAppConfig({ cache: { enabled: true, warmCollections: false } })
+  audioCache.init()
+  getDb().prepare('DELETE FROM audio_cache').run()
+  const track = { ...song(999), qualities: ['320k', '128k'] }
+  const filename = 'quality-regression.mp3'
+  fs.writeFileSync(path.join(serverConfig.audioCacheDir, filename), Buffer.alloc(128))
+  getDb().prepare(`INSERT INTO audio_cache
+    (cache_key, song_key, platform, songmid, quality, file_name, bytes, created_at, last_access_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run('quality-fixture', 'wy_999', 'wy', '999', quality, filename, 128, Date.now(), Date.now())
+  return track
+}
+
+test('HQ playback resolves higher quality before using a standard server cache', async t => {
+  const track = cachedPlaybackSong('128k')
+  const resolve = t.mock.method(sourceManager, 'getMusicUrl', async (_song, qualities, _source, strict) => {
+    assert.deepEqual(qualities, ['320k']); assert.equal(strict, true)
+    return { url: 'https://audio.example/hq.mp3', quality: '320k' as const, sourceId: 'test', sourceName: 'test', platform: 'wy' as const }
+  })
+  const response = await request('/api/url', 'POST', { song: track, qualities: ['320k', '128k'] })
+  assert.equal(response.status, 200)
+  const body = await response.json() as any
+  assert.equal(body.quality, '320k'); assert.equal(body.cached, false)
+  assert.equal(resolve.mock.callCount(), 1)
+})
+
+test('cached standard audio remains playable when the higher-quality source fails', async t => {
+  const track = cachedPlaybackSong('128k')
+  t.mock.method(sourceManager, 'getMusicUrl', async () => { throw new Error('source unavailable') })
+  const response = await request('/api/url', 'POST', { song: track, qualities: ['320k', '128k'] })
+  assert.equal(response.status, 200)
+  const body = await response.json() as any
+  assert.equal(body.quality, '128k'); assert.equal(body.cached, true)
+})
+
+test('a matching HQ cache plays immediately without requesting the source', async t => {
+  const track = cachedPlaybackSong('320k')
+  const resolve = t.mock.method(sourceManager, 'getMusicUrl', async () => { throw new Error('unexpected resolution') })
+  const response = await request('/api/url', 'POST', { song: track, qualities: ['320k', '128k'] })
+  assert.equal(response.status, 200)
+  const body = await response.json() as any
+  assert.equal(body.quality, '320k'); assert.equal(body.cached, true)
+  assert.equal(resolve.mock.callCount(), 0)
+})
+
+test('standard playback does not upgrade to an HQ cache or hide a source error', async t => {
+  const track = cachedPlaybackSong('320k')
+  t.mock.method(sourceManager, 'getMusicUrl', async (_song, qualities) => {
+    assert.deepEqual(qualities, ['128k']); throw new Error('standard unavailable')
+  })
+  const response = await request('/api/url', 'POST', { song: track, qualities: ['128k'] })
+  assert.equal(response.status, 500)
 })

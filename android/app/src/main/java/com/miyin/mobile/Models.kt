@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Song(
+    val artists: List<ArtistRef> = emptyList(),
     val platform: String = "tx",
     val songmid: String = "",
     val name: String = "",
@@ -24,6 +25,10 @@ data class Song(
     val key: String get() = platform + "_" + songmid
     val durationText: String get() = formatDuration(interval * 1000L)
 }
+@Serializable data class ArtistRef(val id: String = "", val name: String = "")
+@Serializable data class AlbumDetail(val id: String = "", val name: String = "", val singer: String = "", val cover: String? = null, val songs: List<Song> = emptyList())
+@Serializable data class Recommendation(val song: Song, val reason: String = "")
+@Serializable data class Recommendations(val items: List<Recommendation> = emptyList())
 
 @Serializable
 data class PlaylistInfo(
@@ -90,6 +95,9 @@ data class NewSongsResponse(val songs: List<Song> = emptyList())
 
 @Serializable
 data class SingersResponse(val singers: List<SingerInfo> = emptyList())
+
+@Serializable
+data class SingerDetailResult(val singer: SingerInfo = SingerInfo(), val songs: List<Song> = emptyList(), val total: Int = 0, val hasMore: Boolean = false, val page: Int = 1, val source: String = "search")
 
 @Serializable
 data class LyricResult(
@@ -162,6 +170,7 @@ data class Playlist(
 
 @Serializable
 data class LibraryData(
+    val favoriteSingers: List<SingerInfo> = emptyList(),
     val favorites: List<FavoriteEntry> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
     val history: List<HistoryEntry> = emptyList()

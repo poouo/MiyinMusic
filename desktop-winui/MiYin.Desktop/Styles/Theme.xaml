@@ -6,52 +6,54 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="AppBgBrush" Color="#0A0C12" />
-            <SolidColorBrush x:Key="SidebarBrush" Color="#0C0F17" />
-            <SolidColorBrush x:Key="PlayerBrush" Color="#0E111A" />
-            <SolidColorBrush x:Key="CardBrush" Color="#141824" />
-            <SolidColorBrush x:Key="CardHoverBrush" Color="#1B2030" />
-            <SolidColorBrush x:Key="LineBrush" Color="#232A3A" />
-            <SolidColorBrush x:Key="TextBrush" Color="#EEF2F8" />
-            <SolidColorBrush x:Key="TextDimBrush" Color="#9AA6BC" />
-            <SolidColorBrush x:Key="TextFaintBrush" Color="#6B7690" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#2FD07F" />
-            <SolidColorBrush x:Key="AccentSoftBrush" Color="#162A22" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#211C18" />
+            <SolidColorBrush x:Key="AppBgBrush" Color="#151515" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#191919" />
+            <SolidColorBrush x:Key="PlayerBrush" Color="#1B1B1B" />
+            <SolidColorBrush x:Key="CardBrush" Color="#202020" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#282828" />
+            <SolidColorBrush x:Key="LineBrush" Color="#343434" />
+            <SolidColorBrush x:Key="TextBrush" Color="#F0EEEA" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#B4B1AC" />
+            <SolidColorBrush x:Key="TextFaintBrush" Color="#A4A19C" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#E8A06F" />
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#352B24" />
             <SolidColorBrush x:Key="Accent2Brush" Color="#57B6FF" />
             <SolidColorBrush x:Key="PinkBrush" Color="#FF5D8F" />
             <SolidColorBrush x:Key="GoldBrush" Color="#F5C45C" />
-            <SolidColorBrush x:Key="RowHoverBrush" Color="#151A26" />
+            <SolidColorBrush x:Key="RowHoverBrush" Color="#272727" />
             <SolidColorBrush x:Key="BadgeBrush" Color="#99000000" />
             <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BlackBrush" Color="#060A08" />
             <Color x:Key="HoverColor">#1E2432</Color>
             <Color x:Key="PressedColor">#252C3E</Color>
-            <Color x:Key="NavHoverColor">#151A26</Color>
-            <Color x:Key="PrimaryHoverColor">#4FE39A</Color>
+            <Color x:Key="NavHoverColor">#272727</Color>
+            <Color x:Key="PrimaryHoverColor">#EFB58B</Color>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="AppBgBrush" Color="#F5F7FC" />
-            <SolidColorBrush x:Key="SidebarBrush" Color="#EDF1F8" />
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="AppBgBrush" Color="#FAF9F6" />
+            <SolidColorBrush x:Key="SidebarBrush" Color="#F0EEEA" />
             <SolidColorBrush x:Key="PlayerBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="CardHoverBrush" Color="#F1F4FA" />
-            <SolidColorBrush x:Key="LineBrush" Color="#DCE3EF" />
-            <SolidColorBrush x:Key="TextBrush" Color="#182033" />
-            <SolidColorBrush x:Key="TextDimBrush" Color="#5C687C" />
-            <SolidColorBrush x:Key="TextFaintBrush" Color="#8A95A8" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#0D9F63" />
-            <SolidColorBrush x:Key="AccentSoftBrush" Color="#E0F5E9" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#F4F2ED" />
+            <SolidColorBrush x:Key="LineBrush" Color="#DEDAD2" />
+            <SolidColorBrush x:Key="TextBrush" Color="#252321" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#66615B" />
+            <SolidColorBrush x:Key="TextFaintBrush" Color="#716A61" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#A64B22" />
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#F6E6DB" />
             <SolidColorBrush x:Key="Accent2Brush" Color="#2E7FE8" />
             <SolidColorBrush x:Key="PinkBrush" Color="#D9476C" />
             <SolidColorBrush x:Key="GoldBrush" Color="#B07A12" />
-            <SolidColorBrush x:Key="RowHoverBrush" Color="#EDF2FA" />
+            <SolidColorBrush x:Key="RowHoverBrush" Color="#F0EDE7" />
             <SolidColorBrush x:Key="BadgeBrush" Color="#99000000" />
             <SolidColorBrush x:Key="WhiteBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BlackBrush" Color="#101827" />
             <Color x:Key="HoverColor">#E8EEF7</Color>
             <Color x:Key="PressedColor">#DCE5F2</Color>
             <Color x:Key="NavHoverColor">#E8EEF7</Color>
-            <Color x:Key="PrimaryHoverColor">#23B578</Color>
+            <Color x:Key="PrimaryHoverColor">#943E1B</Color>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
@@ -85,11 +87,11 @@
         <Setter Property="Foreground" Value="{ThemeResource TextDimBrush}" />
     </Style>
     <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{ThemeResource TextFaintBrush}" />
     </Style>
     <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource TextFaintBrush}" />
         <Setter Property="CharacterSpacing" Value="60" />
@@ -218,7 +220,7 @@
 
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
-        <Setter Property="Foreground" Value="#06130C" />
+        <Setter Property="Foreground" Value="{ThemeResource PrimaryTextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="16,0" />
         <Setter Property="Height" Value="34" />
@@ -311,7 +313,7 @@
         <Setter Property="Height" Value="42" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
-        <Setter Property="Foreground" Value="#06130C" />
+        <Setter Property="Foreground" Value="{ThemeResource PrimaryTextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Template">
             <Setter.Value>

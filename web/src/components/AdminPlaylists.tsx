@@ -4,7 +4,7 @@ import type { AdminUser, AdminUserList, AdminPlaylistSummary, Playlist, Song } f
 import { useToast } from '../state/toast'
 import { Modal } from './Modal'
 
-function UserPicker({ onSelect, disabled = false }: { onSelect: (user: AdminUser) => void; disabled?: boolean }) {
+export function UserPicker({ onSelect, disabled = false }: { onSelect: (user: AdminUser) => void; disabled?: boolean }) {
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
   const [result, setResult] = useState<AdminUserList | null>(null)
@@ -23,7 +23,7 @@ function UserPicker({ onSelect, disabled = false }: { onSelect: (user: AdminUser
     {error && <p role="alert">{error}</p>}
     {!result && !error && <p className="dim">正在查找用户…</p>}
     {result?.users.map(user => <button key={user.id} className="admin-user-choice" disabled={disabled} onClick={() => onSelect(user)}>
-      <strong>{user.nickname}</strong><span className="dim">@{user.username} · {user.playlists} 个歌单{user.status === 'disabled' ? ' · 已停用' : ''}</span>
+      <strong>{user.nickname}</strong><span className="dim">@{user.username} · {user.playlists} 个歌单 · {user.favorites} 首喜欢{user.status === 'disabled' ? ' · 已停用' : ''}</span>
     </button>)}
     {result?.users.length === 0 && <p className="dim">没有找到用户</p>}
     {result && <div className="row gap-8"><button className="btn btn--sm" disabled={page === 1 || disabled} onClick={() => setPage(page - 1)}>上一页</button><span>第 {page} 页 · {result.total} 位用户</span><button className="btn btn--sm" disabled={!result.hasMore || disabled} onClick={() => setPage(page + 1)}>下一页</button></div>}

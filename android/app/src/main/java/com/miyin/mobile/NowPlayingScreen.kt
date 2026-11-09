@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -186,7 +187,7 @@ fun NowPlayingScreen(
                                 .fillMaxWidth()
                                 .weight(1f)
                         )
-                        ProgressControls(player)
+                        ProgressControls(player, onQueue = { showQueue = true })
                     }
                 }
             } else {
@@ -221,7 +222,7 @@ fun NowPlayingScreen(
                         .weight(1f)
                         .padding(top = 8.dp)
                 )
-                ProgressControls(player)
+                ProgressControls(player, onQueue = { showQueue = true })
             }
         }
     }
@@ -236,6 +237,7 @@ fun NowPlayingScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
             )
+            Row { TextButton(onClick = { player.clearQueue(); showQueue = false }) { Text("清空队列") }; ListeningTools(player) }
             LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                 itemsIndexed(player.queue, key = { _, s -> s.key }) { index, item ->
                     ListEntrance(index) {
@@ -273,6 +275,13 @@ fun NowPlayingScreen(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        Column {
+                            Row {
+                                TextButton(enabled = index > 0, onClick = { player.moveQueue(index, index - 1) }, contentPadding = PaddingValues(4.dp)) { Text("上移") }
+                                TextButton(enabled = index < player.queue.lastIndex, onClick = { player.moveQueue(index, index + 1) }, contentPadding = PaddingValues(4.dp)) { Text("下移") }
+                            }
+                            TextButton(onClick = { player.removeFromQueue(index) }) { Text("移除") }
                         }
                     }
                     }
@@ -383,7 +392,7 @@ private fun LyricsPane(
     LaunchedEffect(listState.isScrollInProgress, scrubbing, dragging) {
         if (scrubbing && !dragging && !listState.isScrollInProgress) {
             delay(180)
-            player.lyrics.getOrNull(previewIndex)?.let { player.seekTo(it.timeMs) }
+            player.lyrics.getOrNull(previewIndex)?.let { player.seekTo(it.timeMs - player.lyricOffsetMs) }
             scrubbing = false
         }
     }
@@ -435,7 +444,7 @@ private fun LyricsPane(
                     )
                     Column(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                            .clickable { player.seekTo(line.timeMs) }
+                            .clickable { player.seekTo(line.timeMs - player.lyricOffsetMs) }
                             .padding(horizontal = 28.dp, vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
@@ -478,7 +487,7 @@ private fun LyricsPane(
 }
 
 @Composable
-private fun ProgressControls(player: PlayerController) {
+private fun ProgressControls(player: PlayerController, onQueue: () -> Unit) {
     var pendingPosition by remember(player.current?.key) { mutableStateOf<Float?>(null) }
     player.errorMessage?.let {
         Text(
@@ -521,9 +530,15 @@ private fun ProgressControls(player: PlayerController) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         PlayerControl(
-            icon = Icons.Rounded.Shuffle,
-            active = player.shuffle,
-            onClick = { player.toggleShuffle() }
+            icon = when (player.playbackMode) {
+                PlaybackMode.SEQUENTIAL -> Icons.Rounded.PlaylistPlay
+                PlaybackMode.ALL -> Icons.Rounded.Repeat
+                PlaybackMode.ONE -> Icons.Rounded.RepeatOne
+                PlaybackMode.SHUFFLE -> Icons.Rounded.Shuffle
+            },
+            active = player.playbackMode != PlaybackMode.SEQUENTIAL,
+            description = "播放模式：" + player.playbackMode.label,
+            onClick = { player.toggleRepeat() }
         )
         PlayerControl(Icons.Rounded.SkipPrevious, onClick = { player.previous() })
         Box(
@@ -550,11 +565,7 @@ private fun ProgressControls(player: PlayerController) {
             }
         }
         PlayerControl(Icons.Rounded.SkipNext, onClick = { player.next() })
-        PlayerControl(
-            icon = if (player.repeatMode == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-            active = player.repeatMode != RepeatMode.OFF,
-            onClick = { player.toggleRepeat() }
-        )
+        PlayerControl(Icons.Rounded.QueueMusic, description = "播放队列", onClick = onQueue)
     }
 }
 
@@ -562,12 +573,13 @@ private fun ProgressControls(player: PlayerController) {
 private fun PlayerControl(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     active: Boolean = false,
+    description: String? = null,
     onClick: () -> Unit
 ) {
     IconButton(onClick = onClick) {
         Icon(
             icon,
-            contentDescription = null,
+            contentDescription = description,
             tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

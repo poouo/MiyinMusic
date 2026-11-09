@@ -57,7 +57,7 @@ object CarLyrics {
         val track = song ?: return
         val item = current.currentMediaItem ?: return
         if (item.mediaId != track.key) return
-        val lyric = if (useLyric) lines.lastOrNull { it.timeMs <= current.currentPosition }?.text else null
+        val lyric = if (useLyric) lines.lastOrNull { it.timeMs <= current.currentPosition + ListeningStore(context).lyricOffset }?.text else null
         val title = lyric ?: track.name
         if (title == lastTitle && current.isPlaying == lastPlaying) return
         lastTitle = title

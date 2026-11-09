@@ -37,6 +37,7 @@ object PlaybackEngine {
                         .build(),
                     true
                 )
+                setHandleAudioBecomingNoisy(true)
             }
             .also { player = it }
     }

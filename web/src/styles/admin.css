@@ -16,3 +16,12 @@ body:has(.admin-standalone) { overflow: auto; }
 .admin-playlist-detail .admin-table th:nth-child(1) { width: 36%; }
 .admin-playlist-detail .admin-table th:nth-child(2) { width: 27%; }
 .admin-playlist-detail .admin-table th:nth-child(3) { width: 15%; }
+
+.admin-favorites .admin-search { flex: none; min-height: 40px; border-radius: 8px; }
+.admin-favorites .admin-search input { width: 100%; min-width: 0; height: 36px; }
+.admin-favorites h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.admin-favorites h3 { font-size: 16px; font-weight: 600; }
+@media (max-width: 600px) {
+  .admin-favorites .admin-toolbar { flex-wrap: wrap; }
+  .admin-favorites .admin-toolbar > .grow { flex-basis: 100%; }
+}

@@ -149,14 +149,7 @@ fun SongRow(
                 modifier = Modifier.size(20.dp)
             )
         }
-        IconButton(onClick = onPlay) {
-            Icon(
-                imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = "播放",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        SongActions(song)
     }
     }
 }

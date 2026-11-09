@@ -116,7 +116,7 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
             item {
                 SettingsCard("外观") {
                     ChoiceRow(listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), themeMode, onTheme)
-                    SettingSwitch("启动时显示首页缓存", "先显示上次内容，再自动更新最新内容", cachedHome) {
+                    SettingSwitch("启动时显示首页缓存", "", cachedHome) {
                         cachedHome = it; prefs.showCachedHome = it
                     }
                 }
@@ -165,10 +165,10 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                     ChoiceRow(listOf("20" to "小字", "26" to "标准", "34" to "大字"), lyricSize.toString()) {
                         lyricSize = it.toInt(); prefs.lyricSize = lyricSize; DesktopLyrics.configure(context)
                     }
-                    SettingSwitch("双行显示", "同时展示当前句与下一句", lyricDouble) {
+                    SettingSwitch("双行显示", "", lyricDouble) {
                         lyricDouble = it; prefs.lyricDoubleLine = it; DesktopLyrics.configure(context)
                     }
-                    SettingSwitch("锁定歌词位置", "锁定后点击会穿透到下层应用；返回此处关闭即可继续拖动。", lyricLocked) {
+                    SettingSwitch("锁定歌词位置", "", lyricLocked) {
                         lyricLocked = it; prefs.lyricLocked = it; DesktopLyrics.configure(context)
                     }
                     TextButton(onClick = { prefs.lyricY = 160; prefs.lyricLocked = false; lyricLocked = false; DesktopLyrics.configure(context) }) {
@@ -290,7 +290,7 @@ private fun SettingSwitch(title: String, detail: String, checked: Boolean, onCha
         .semantics(mergeDescendants = true) { contentDescription = title }, verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked, onCheckedChange = null)
     }

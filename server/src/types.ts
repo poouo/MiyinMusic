@@ -22,6 +22,7 @@ export interface Song {
   songmid: string
   name: string
   singer: string
+  artists?: { id: string; name: string }[]
   albumName: string
   interval: number
   img?: string | null

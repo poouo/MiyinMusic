@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { navigate, useRoute } from '../lib/router'
 import { formatCount } from '../lib/format'
 import type { SingerInfo, Song } from '../lib/types'
 import { usePlayer } from '../state/player'
+import { useLibrary } from '../state/library'
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal'
 import { Cover } from '../components/Cover'
 import { EmptyState } from '../components/EmptyState'
@@ -14,6 +15,13 @@ import { ArrowLeftIcon, PlayIcon } from '../components/Icons'
 export function SingerPage({ id }: { id: string }) {
   const route = useRoute()
   const player = usePlayer()
+  const library = useLibrary()
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [source, setSource] = useState('catalog')
+  const [moreBusy, setMoreBusy] = useState(false)
+  const [moreError, setMoreError] = useState<string | null>(null)
+  const versionRef = useRef(0)
   const name = route.query.get('name') ?? ''
   const [singer, setSinger] = useState<SingerInfo | null>(null)
   const [songs, setSongs] = useState<Song[]>([])
@@ -22,16 +30,19 @@ export function SingerPage({ id }: { id: string }) {
   const [addTarget, setAddTarget] = useState<Song | null>(null)
 
   useEffect(() => {
+    const version = ++versionRef.current
     let cancelled = false
     setLoading(true)
     setError(null)
     setSongs([])
+    setPage(1); setHasMore(false); setMoreBusy(false); setMoreError(null); setSinger(null)
     api
       .singer(id, name)
       .then((result) => {
         if (cancelled) return
         setSinger(result.singer)
         setSongs(result.songs)
+        setHasMore(result.hasMore); setSource(result.source)
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message)
@@ -41,6 +52,7 @@ export function SingerPage({ id }: { id: string }) {
       })
     return () => {
       cancelled = true
+      if (versionRef.current === version) versionRef.current++
     }
   }, [id, name])
 
@@ -86,14 +98,15 @@ export function SingerPage({ id }: { id: string }) {
               <Cover src={singer.pic} style={{ width: '100%', height: '100%' }} radius="50%" lazy={false} />
             </div>
             <div className="detail-hero__info">
-              <div className="detail-hero__eyebrow">歌手 · QQ 音乐</div>
+              <div className="detail-hero__eyebrow">歌手 · {singer.platform === 'wy' ? '网易云' : 'QQ 音乐'}</div>
               <h1 className="detail-hero__title">{singer.name}</h1>
               <div className="detail-hero__meta">
                 {singer.followers ? <span>{formatCount(singer.followers)} 粉丝</span> : null}
                 {singer.area ? <span>· {singer.area}</span> : null}
-                <span>· {songs.length} 首热门歌曲</span>
+                <span>· 已加载 {songs.length} 首 · {source === 'catalog' ? '歌手作品' : '搜索到的歌曲'}</span>
               </div>
               <div className="detail-actions">
+                <button className="btn" onClick={() => void library.followSinger(singer)}>{library.data.favoriteSingers?.some(item => item.id === singer.id) ? '取消关注' : '关注歌手'}</button>
                 <button
                   className="btn btn--primary"
                   disabled={!songs.length}
@@ -108,7 +121,15 @@ export function SingerPage({ id }: { id: string }) {
           {songs.length === 0 ? (
             <EmptyState title="暂时没有歌曲" description="换一位歌手看看吧。" />
           ) : (
-            <SongList songs={songs} onPlay={(index) => player.playSongs(songs, index)} onAddToPlaylist={setAddTarget} />
+            <><SongList songs={songs} onPlay={(index) => player.playSongs(songs, index)} onAddToPlaylist={setAddTarget} />
+              {moreError && <p role="alert" className="muted">{moreError}</p>}
+              {hasMore && <button className="btn" disabled={moreBusy} onClick={async () => {
+                const version = versionRef.current; setMoreBusy(true); setMoreError(null)
+                try { const result = await api.singer(id, name, page + 1); if (version !== versionRef.current) return; setSongs(old => [...new Map([...old, ...result.songs].map(song => [song.platform + ':' + song.songmid, song])).values()]); setPage(page + 1); setHasMore(result.hasMore); setSource(result.source) }
+                catch (e) { if (version === versionRef.current) setMoreError((e as Error).message) }
+                finally { if (version === versionRef.current) setMoreBusy(false) }
+              }}>{moreBusy ? '加载中…' : moreError ? '重试此页' : '加载更多作品'}</button>}
+            </>
           )}
         </>
       ) : null}

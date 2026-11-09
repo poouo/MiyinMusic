@@ -11,6 +11,7 @@ namespace MiYin.Desktop.Views;
 
 public sealed partial class HomePage : Page
 {
+    private void ForYou_Click(object sender, RoutedEventArgs e) => MainWindow.Instance?.NavigateTo(typeof(SongsPage), "for-you");
     private static List<PlaylistInfo>? _playlists;
     private static List<ChartInfo>? _charts;
     private static List<Song>? _newSongs;

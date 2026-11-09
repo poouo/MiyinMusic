@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using MiYin.Desktop.Models;
 
 namespace MiYin.Desktop.Services;
@@ -29,6 +29,9 @@ public sealed class AppSettings
     public bool MinimizeToTray { get; set; } = false;
     public string Repeat { get; set; } = "all";
     public bool Shuffle { get; set; }
+    public bool SidebarCollapsed { get; set; }
+    public double LyricOffset { get; set; }
+    public List<string> SearchHistory { get; set; } = new();
     public bool DesktopLyrics { get; set; }
     public string LyricStyle { get; set; } = "emerald";
     public int LyricFontSize { get; set; } = 36;
@@ -36,6 +39,7 @@ public sealed class AppSettings
     public bool LyricLocked { get; set; }
     public int? LyricX { get; set; }
     public int? LyricY { get; set; }
+    public int? LyricWidth { get; set; }
     public WindowPlacement Window { get; set; } = new();
 }
 

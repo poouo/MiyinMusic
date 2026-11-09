@@ -23,6 +23,10 @@ class AppPrefs(context: Context) {
         get() = prefs.getString("preferred_quality", "320k") ?: "320k"
         set(value) { prefs.edit().putString("preferred_quality", value).apply() }
 
+    var playbackMode: String
+        get() = prefs.getString("playback_mode", "ALL") ?: "ALL"
+        set(value) { prefs.edit().putString("playback_mode", value).apply() }
+
     var carLyrics: Boolean
         get() = prefs.getBoolean("car_lyrics", false)
         set(value) { prefs.edit().putBoolean("car_lyrics", value).apply() }

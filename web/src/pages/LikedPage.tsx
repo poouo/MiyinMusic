@@ -22,9 +22,6 @@ export function LikedPage() {
 
   return (
     <div className="fade-in liked-page">
-      <div className="backdrop-cover">
-        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(140deg, var(--accent-2), var(--accent))' }} />
-      </div>
 
       <button className="btn btn--ghost btn--sm hide-mobile" onClick={() => navigate('/library')} style={{ marginBottom: 8 }}>
         <ArrowLeftIcon size={15} /> 音乐库
@@ -34,11 +31,11 @@ export function LikedPage() {
         <div
           className="detail-hero__cover"
           style={{
-            background: 'linear-gradient(150deg, var(--accent-2), var(--accent) 70%, #a06bff)',
+            background: 'var(--bg-elev-2)',
             display: 'grid',
             placeItems: 'center',
-            color: '#fff',
-            boxShadow: '0 30px 70px rgba(255, 95, 143, 0.35)',
+            color: 'var(--accent)',
+            border: '1px solid var(--border)',
           }}
         >
           <HeartIcon size={74} filled />
@@ -68,7 +65,6 @@ export function LikedPage() {
         <EmptyState
           icon={<HeartIcon size={22} />}
           title="还没有喜欢的歌"
-          description="在任意歌曲右侧点一下心形按钮，就会收进「我的喜欢」。"
           action={
             <button className="btn btn--sm" onClick={() => navigate('/search')}>
               去搜索歌曲

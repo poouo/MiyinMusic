@@ -41,6 +41,7 @@ export const QUALITY_NAMES: Record<Quality, string> = {
 }
 
 export interface Song {
+  artists?: { id: string; name: string }[]
   platform: Platform
   songmid: string
   name: string
@@ -81,12 +82,23 @@ export interface FavoriteEntry {
   addedAt: number
 }
 
+export interface AdminFavorites {
+  user: AdminUser
+  favorites: FavoriteEntry[]
+  total: number
+  totalFavorites: number
+  page: number
+  limit: number
+  hasMore: boolean
+}
+
 export interface HistoryEntry {
   song: Song
   playedAt: number
 }
 
 export interface LibraryData {
+  favoriteSingers?: SingerInfo[]
   favorites: FavoriteEntry[]
   playlists: Playlist[]
   history: HistoryEntry[]

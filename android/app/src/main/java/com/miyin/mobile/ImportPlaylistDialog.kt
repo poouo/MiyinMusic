@@ -35,12 +35,11 @@ fun ImportPlaylistDialog(api: ApiClient, onClose: () -> Unit, onImported: (Libra
         title = { Text("导入外链歌单") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("粘贴 QQ 音乐或网易云音乐的公开歌单链接，也可以直接粘贴分享文字。")
                 OutlinedTextField(
                     value = link,
                     onValueChange = { link = it; preview = null; error = null },
                     enabled = !loading,
-                    label = { Text("歌单分享链接") },
+                    label = { Text("QQ / 网易云歌单链接或分享文字") },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 4,
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp)

@@ -40,10 +40,13 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     private TimeSpan _position;
     private TimeSpan _duration;
     private double _volume;
+    private double _lastAudibleVolume = .75;
     private bool _muted;
     private string _repeatMode;
     private bool _shuffle;
+    private readonly List<string> _shuffleHistory = [];
     private string _currentQuality = "";
+    private string _requestedQuality = "auto";
     private string _error = "";
     private int _activeLyricIndex = -1;
     private bool _serverCached;
@@ -51,6 +54,47 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     private bool _silentPlaying;
     private DateTime _silentStartedAt;
     private TimeSpan _silentBase;
+    private DateTime _lastCheckpoint;
+    private bool _restored;
+    private bool _autoPlayIntent;
+    private sealed class PrefetchedUrl { public string Key { get; init; } = ""; public DateTime At { get; init; } = DateTime.UtcNow; public UrlResult? Result { get; set; } }
+    private PrefetchedUrl? _prefetchedUrl;
+    private async Task PrefetchNextAsync()
+    {
+        if (!_isPlaying || _silentMode || _shuffle || _repeatMode == "one" || StopAfterTrack || (_duration - _position).TotalSeconds is <= 0 or > 25) return;
+        if (SleepUntil is { } until && until < DateTime.UtcNow.AddSeconds(25)) return;
+        var next = QueueIndex + 1;
+        if (next >= Queue.Count) { if (_repeatMode == "off") return; next = 0; }
+        if (next == QueueIndex || next < 0 || next >= Queue.Count) return;
+        var song = Queue[next];
+        if (song.Platform == "local" || DownloadService.Instance.TryGetDownloadPath(song.Key, out _)) return;
+        var qualities = BuildQualityOrder(null);
+        var key = song.Key + ":" + string.Join(",", qualities);
+        if (_prefetchedUrl?.Key == key) return;
+        var pending = new PrefetchedUrl { Key = key };
+        _prefetchedUrl = pending;
+        try { var result = await ApiService.ResolveUrlAsync(song, qualities); if (_prefetchedUrl == pending) pending.Result = result; }
+        catch { /* Speculative failure never interrupts the current song. */ }
+    }
+    public DateTime? SleepUntil { get; private set; }
+    public bool StopAfterTrack { get; private set; }
+    public void SetSleep(int minutes) { StopAfterTrack = minutes == -1; SleepUntil = minutes > 0 ? DateTime.UtcNow.AddMinutes(minutes) : null; }
+    public sealed class PlaybackSnapshot
+    {
+        public List<Song> Queue { get; set; } = new();
+        public int Index { get; set; }
+        public double Position { get; set; }
+    }
+    private static string SnapshotFile => Path.Combine(AppInfo.DataDirectory, "playback.json");
+    private void SavePlayback()
+    {
+        try
+        {
+            File.WriteAllText(SnapshotFile + ".tmp", System.Text.Json.JsonSerializer.Serialize(new PlaybackSnapshot { Queue = Queue.ToList(), Index = QueueIndex, Position = _position.TotalSeconds }));
+            File.Move(SnapshotFile + ".tmp", SnapshotFile, true);
+        }
+        catch { }
+    }
 
     private MediaService()
     {
@@ -58,8 +102,10 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
             ?? throw new InvalidOperationException("MediaService 必须在 UI 线程初始化");
 
         _volume = Math.Clamp(ConfigService.Current.Volume, 0, 1);
+        if (_volume > .001) _lastAudibleVolume = _volume;
         _repeatMode = ConfigService.Current.Repeat is "one" or "off" or "all" ? ConfigService.Current.Repeat : "all";
         _shuffle = ConfigService.Current.Shuffle;
+        if (_shuffle) _repeatMode = "all";
 
         _player.AudioCategory = MediaPlayerAudioCategory.Media;
         _player.Volume = _volume;
@@ -92,6 +138,18 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         _timer.Interval = TimeSpan.FromMilliseconds(250);
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
+        try
+        {
+            var saved = System.Text.Json.JsonSerializer.Deserialize<PlaybackSnapshot>(File.ReadAllText(SnapshotFile));
+            if (saved is not null && saved.Index >= 0 && saved.Index < saved.Queue.Count)
+            {
+                foreach (var song in saved.Queue) Queue.Add(song);
+                QueueIndex = saved.Index; _current = Queue[QueueIndex];
+                _position = TimeSpan.FromSeconds(Math.Max(0, saved.Position));
+                _duration = TimeSpan.FromSeconds(_current.Interval); _restored = true;
+            }
+        }
+        catch { }
     }
 
     // ---------- 展示属性 ----------
@@ -107,8 +165,11 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     public bool Shuffle => _shuffle;
     public string RepeatMode => _repeatMode;
     public string CurrentQuality => _currentQuality;
-    public string QualityLabel => string.IsNullOrWhiteSpace(_currentQuality) ? "音质" : _currentQuality;
-    public bool RepeatActive => _repeatMode != "off";
+    public string RequestedQuality => _requestedQuality;
+    public string QualityLabel => string.IsNullOrWhiteSpace(_currentQuality) ? (_isLoading ? "加载中" : "音质") : _currentQuality;
+    public string QualityDescription => $"期望：{PlaybackQuality.Name(BuildQualityOrder(_requestedQuality)[0])}\n实际：{PlaybackQuality.Name(_currentQuality)}"
+        + (PlaybackQuality.IsKnown(_currentQuality) && _currentQuality != BuildQualityOrder(_requestedQuality)[0] ? "\n当前音源返回其他音质" : "");
+    public bool RepeatActive => _shuffle || _repeatMode != "off";
     public string ErrorMessage => _error;
     public bool ServerCached => _serverCached;
     public bool SilentMode => _silentMode;
@@ -126,15 +187,17 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     public string PositionText => FormatText.Time(_position);
     public string DurationText => _duration > TimeSpan.Zero ? FormatText.Time(_duration) : "--:--";
     public string PlayGlyph => _isPlaying ? "\uE769" : "\uE768";
-    public string RepeatGlyph => _repeatMode switch
+    public string RepeatGlyph => PlaybackOrder.Mode(_repeatMode, _shuffle) switch
     {
+        "shuffle" => "\uE8B1",
         "one" => "\uE8ED",
         "off" => "\uE8FD",
         _ => "\uE8EE",
     };
     public string VolumeGlyph => _muted || _volume <= 0.001 ? "\uE74F" : "\uE767";
-    public string RepeatText => _repeatMode switch
+    public string RepeatText => PlaybackOrder.Mode(_repeatMode, _shuffle) switch
     {
+        "shuffle" => "随机播放",
         "one" => "单曲循环",
         "off" => "顺序播放",
         _ => "列表循环",
@@ -151,6 +214,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     {
         var list = songs.ToList();
         if (list.Count == 0) return;
+        _shuffleHistory.Clear();
         Queue.Clear();
         foreach (var song in list) Queue.Add(song);
         PlayAt(Math.Clamp(startIndex, 0, list.Count - 1));
@@ -159,6 +223,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     public void PlaySong(Song song, IReadOnlyList<Song>? list = null)
     {
+        _shuffleHistory.Clear();
         if (list is { Count: > 0 })
         {
             Queue.Clear();
@@ -177,6 +242,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     public void PlayAt(int index)
     {
         if (index < 0 || index >= Queue.Count) return;
+        _restored = false;
         QueueIndex = index;
         OnPropertyChanged(nameof(QueueIndex));
         var song = Queue[index];
@@ -186,6 +252,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     public async Task PlayPauseAsync()
     {
         if (_current is null) return;
+        if (_isLoading && _autoPlayIntent) { _loadToken++; _isLoading = false; Pause(); OnPropertyChanged(nameof(IsLoading)); return; }
         if (_silentMode)
         {
             SetSilentPlaying(!_silentPlaying);
@@ -193,15 +260,18 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         }
         if (_player.Source is null)
         {
-            await LoadAsync(_current);
+            var start = _position;
+            _restored = false;
+            await LoadAsync(_current, startAt: start);
             return;
         }
-        if (_isPlaying) _player.Pause();
-        else _player.Play();
+        if (_isPlaying) Pause();
+        else { _autoPlayIntent = true; _player.Play(); }
     }
 
     public void Pause()
     {
+        _autoPlayIntent = false;
         if (_silentMode)
         {
             SetSilentPlaying(false);
@@ -212,6 +282,9 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     public void Play()
     {
+        if (_current is null) return;
+        if (_player.Source is null && !_silentMode) { _restored = false; _ = LoadAsync(_current, startAt: _position); return; }
+        _autoPlayIntent = true;
         if (_silentMode)
         {
             SetSilentPlaying(true);
@@ -220,18 +293,19 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         _player.Play();
     }
 
-    public void Next()
+    public void Next(bool manual = true)
     {
         if (Queue.Count == 0) return;
-        var next = _shuffle && Queue.Count > 1 ? Random.Shared.Next(Queue.Count) : QueueIndex + 1;
-        if (next >= Queue.Count)
+        var next = PlaybackOrder.NextIndex(QueueIndex, Queue.Count, PlaybackOrder.Mode(_repeatMode, _shuffle), manual);
+        if (next < 0)
         {
-            if (_repeatMode == "all") next = 0;
-            else
-            {
-                Pause();
-                return;
-            }
+            Pause();
+            return;
+        }
+        if (_shuffle && _current is not null)
+        {
+            _shuffleHistory.Add(_current.Key);
+            if (_shuffleHistory.Count > 100) _shuffleHistory.RemoveAt(0);
         }
         PlayAt(next);
     }
@@ -239,18 +313,31 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     public void Previous()
     {
         if (Queue.Count == 0) return;
-        if (_position.TotalSeconds > 4)
+        if (_position.TotalSeconds > 3)
         {
             Seek(TimeSpan.Zero);
             return;
         }
+        if (_shuffle)
+        {
+            while (_shuffleHistory.Count > 0)
+            {
+                var key = _shuffleHistory[^1];
+                _shuffleHistory.RemoveAt(_shuffleHistory.Count - 1);
+                var previous = Queue.ToList().FindIndex(song => song.Key == key);
+                if (previous >= 0) { PlayAt(previous); return; }
+            }
+            PlayAt(PlaybackOrder.NextIndex(QueueIndex, Queue.Count, "shuffle", true));
+            return;
+        }
         var prev = QueueIndex - 1;
-        if (prev < 0) prev = _repeatMode == "all" ? Queue.Count - 1 : 0;
+        if (prev < 0) prev = _repeatMode == "off" ? 0 : Queue.Count - 1;
         PlayAt(prev);
     }
 
     public void Seek(TimeSpan position)
     {
+        if (_restored) { _position = ClampPosition(position); SavePlayback(); OnPropertyChanged(nameof(PositionSeconds)); return; }
         if (_duration > TimeSpan.Zero)
         {
             position = position < TimeSpan.Zero ? TimeSpan.Zero : position > _duration ? _duration : position;
@@ -278,22 +365,24 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     {
         value = Math.Clamp(value, 0, 1);
         _volume = value;
+        if (value > .001) _lastAudibleVolume = value;
         _player.Volume = value;
         _muted = value <= 0.001;
         _player.IsMuted = false;
         OnPropertyChanged(nameof(Volume));
         OnPropertyChanged(nameof(VolumeGlyph));
         OnPropertyChanged(nameof(IsMuted));
+        ConfigService.Current.Volume = value;
         if ((DateTime.UtcNow - _lastVolumeSave).TotalSeconds > 1)
         {
             _lastVolumeSave = DateTime.UtcNow;
-            ConfigService.Current.Volume = value;
             ConfigService.Save();
         }
     }
 
     public void ToggleMute()
     {
+        if (_volume <= .001) { SetVolume(_lastAudibleVolume); return; }
         _muted = !_muted;
         _player.IsMuted = _muted;
         OnPropertyChanged(nameof(IsMuted));
@@ -302,37 +391,51 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     public void CycleRepeat()
     {
-        _repeatMode = _repeatMode switch
-        {
-            "all" => "one",
-            "one" => "off",
-            _ => "all",
-        };
+        SetPlaybackMode(PlaybackOrder.NextMode(PlaybackOrder.Mode(_repeatMode, _shuffle)));
+    }
+
+    public void SetPlaybackMode(string mode)
+    {
+        if (mode is not ("off" or "all" or "one" or "shuffle")) return;
+        _shuffle = mode == "shuffle";
+        _repeatMode = _shuffle ? "all" : mode;
+        _shuffleHistory.Clear();
+        ConfigService.Current.Repeat = _repeatMode;
+        ConfigService.Current.Shuffle = _shuffle;
+        ConfigService.Save();
+        OnPropertyChanged(nameof(RepeatMode));
+        OnPropertyChanged(nameof(RepeatText));
+        OnPropertyChanged(nameof(RepeatGlyph));
+        OnPropertyChanged(nameof(RepeatActive));
+        OnPropertyChanged(nameof(Shuffle));
+    }
+
+    public void ToggleShuffle()
+    {
+        _shuffle = !_shuffle;
+        _repeatMode = "all";
+        _shuffleHistory.Clear();
+        ConfigService.Current.Shuffle = _shuffle;
         ConfigService.Current.Repeat = _repeatMode;
         ConfigService.Save();
+        OnPropertyChanged(nameof(Shuffle));
         OnPropertyChanged(nameof(RepeatMode));
         OnPropertyChanged(nameof(RepeatText));
         OnPropertyChanged(nameof(RepeatGlyph));
         OnPropertyChanged(nameof(RepeatActive));
     }
 
-    public void ToggleShuffle()
-    {
-        _shuffle = !_shuffle;
-        ConfigService.Current.Shuffle = _shuffle;
-        ConfigService.Save();
-        OnPropertyChanged(nameof(Shuffle));
-    }
-
     public async Task SetQualityAsync(string quality)
     {
         if (_current is null) return;
+        _requestedQuality = quality;
         var position = _position;
-        await LoadAsync(_current, quality == "auto" ? null : quality, true, position, recordPlay: false);
+        await LoadAsync(_current, quality == "auto" ? null : quality, _isPlaying || (_isLoading && _autoPlayIntent), position, recordPlay: false, refreshSource: true);
     }
 
     public void AddToQueue(Song song, bool playNext = false)
     {
+        if (Queue.Any(item => item.Key == song.Key)) { Notify.Show("此歌曲已在队列中"); return; }
         if (playNext && QueueIndex >= 0)
             Queue.Insert(QueueIndex + 1, song);
         else
@@ -344,31 +447,28 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     {
         if (index < 0 || index >= Queue.Count) return;
         var removingCurrent = index == QueueIndex;
+        var resume = _isPlaying || (_isLoading && _autoPlayIntent);
         Queue.RemoveAt(index);
         if (index < QueueIndex) QueueIndex--;
         if (removingCurrent)
         {
+            _loadToken++; _restored = false;
             if (Queue.Count == 0)
             {
-                StopSilentPlayback();
-                _isPlaying = false;
-                _player.Pause();
-                _player.Source = null;
-                _current = null;
-                QueueIndex = -1;
-                NotifyCurrent();
-                OnPropertyChanged(nameof(IsPlaying));
-                OnPropertyChanged(nameof(PlayGlyph));
+                ClearQueue();
                 return;
             }
             QueueIndex = Math.Clamp(QueueIndex, 0, Queue.Count - 1);
-            PlayAt(QueueIndex);
+            _ = LoadAsync(Queue[QueueIndex], autoPlay: resume);
         }
         OnPropertyChanged(nameof(QueueIndex));
+        SavePlayback();
     }
 
     public void ClearQueue()
     {
+        _loadToken++; _restored = false; _autoPlayIntent = false; _isLoading = false;
+        _position = TimeSpan.Zero; _duration = TimeSpan.Zero; Lyrics.Clear(); _prefetchedUrl = null;
         StopSilentPlayback();
         _isPlaying = false;
         Queue.Clear();
@@ -379,6 +479,8 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         NotifyCurrent();
         OnPropertyChanged(nameof(IsPlaying));
         OnPropertyChanged(nameof(PlayGlyph));
+        OnPropertyChanged(nameof(IsLoading)); OnPropertyChanged(nameof(PositionSeconds)); OnPropertyChanged(nameof(DurationSeconds));
+        SavePlayback();
     }
 
     // ---------- 加载 ----------
@@ -387,11 +489,20 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         string? forceQuality = null,
         bool autoPlay = true,
         TimeSpan? startAt = null,
-        bool recordPlay = true)
+        bool recordPlay = true,
+        bool refreshSource = false)
     {
         var version = ++_loadToken;
+        _restored = false;
+        _player.Pause();
+        _player.Source = null;
+        _pendingSeek = null;
+        _autoPlayIntent = autoPlay;
         StopSilentPlayback();
+        if (_current?.Key != song.Key) _requestedQuality = "auto";
         _current = song;
+        var preferred = BuildQualityOrder(forceQuality ?? _requestedQuality);
+        var requireMatch = refreshSource || _requestedQuality != "auto";
         AppLog.Write($"load start key={song.Key} name={song.Name}");
         _isLoading = true;
         _isPlaying = false;
@@ -399,7 +510,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         _serverCached = false;
         _currentQuality = "";
         _duration = song.Interval > 0 ? TimeSpan.FromSeconds(song.Interval) : TimeSpan.Zero;
-        _position = TimeSpan.Zero;
+        _position = startAt ?? TimeSpan.Zero;
         Lyrics.Clear();
         _activeLyricIndex = -1;
         OnPropertyChanged(nameof(HasLyrics));
@@ -410,11 +521,13 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ErrorMessage));
         OnPropertyChanged(nameof(SilentMode));
         OnPropertyChanged(nameof(PlaybackModeText));
-        if (recordPlay) LibraryService.Instance.RecordPlay(song);
+        if (recordPlay && song.Platform != "local") LibraryService.Instance.RecordPlay(song);
 
-        _ = LoadLyricsAsync(song, version);
+        if (song.Platform != "local") _ = LoadLyricsAsync(song, version);
 
-        if (await HasNoAudioOutputAsync())
+        var noOutput = await HasNoAudioOutputAsync();
+        if (version != _loadToken) return;
+        if (noOutput)
         {
             _player.Pause();
             _player.Source = null;
@@ -431,13 +544,21 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
             var quality = "";
             string? cacheSource = null;
 
-            if (DownloadService.Instance.TryGetDownloadPath(song.Key, out var downloadedPath))
+            if (LocalMusicService.Instance.TryGetPath(song.Key, out var localPath))
+            {
+                var file = await StorageFile.GetFileFromPathAsync(localPath);
+                source = MediaSource.CreateFromStorageFile(file);
+                quality = "本地文件";
+            }
+            else if (song.Platform == "local") throw new FileNotFoundException("本地文件已移动或删除，请重新扫描目录");
+            else if (DownloadService.Instance.TryGetDownloadPath(song.Key, out var downloadedPath, out var downloadedQuality)
+                && PlaybackQuality.CanReuse(downloadedQuality, preferred, requireMatch))
             {
                 try
                 {
                     var file = await StorageFile.GetFileFromPathAsync(downloadedPath);
                     source = MediaSource.CreateFromStorageFile(file);
-                    quality = "本地下载";
+                    quality = string.IsNullOrWhiteSpace(downloadedQuality) ? "本地下载" : downloadedQuality;
                     AppLog.Write("source=download path=" + downloadedPath);
                 }
                 catch
@@ -445,7 +566,8 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
                     source = null;
                 }
             }
-            else if (CacheService.Instance.TryGetLocalPath(song.Key, out var cachedPath, out var cachedQuality))
+            else if (CacheService.Instance.TryGetLocalPath(song.Key, out var cachedPath, out var cachedQuality)
+                && PlaybackQuality.CanReuse(cachedQuality, preferred, requireMatch))
             {
                 try
                 {
@@ -462,8 +584,11 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
             if (source is null)
             {
-                var preferred = BuildQualityOrder(forceQuality);
-                var resolved = await ApiService.ResolveUrlAsync(song, preferred);
+                var cached = _prefetchedUrl;
+                var key = song.Key + ":" + string.Join(",", preferred);
+                var resolved = cached?.Key == key && cached.Result is not null && (DateTime.UtcNow - cached.At).TotalSeconds < 45
+                    ? cached.Result : await ApiService.ResolveUrlAsync(song, preferred);
+                _prefetchedUrl = null;
                 if (version != _loadToken) return;
                 AppLog.Write($"resolved quality={resolved.Quality} cached={resolved.Cached} url={SafeUrl(resolved.PlayUrl)}");
                 cacheSource = LocalMediaServer.Instance.Register(ApiService.AbsoluteUrl(resolved.PlayUrl));
@@ -482,12 +607,19 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
             _pendingSeek = startAt;
             _player.Source = source;
             AppLog.Write("player source assigned, autoplay=" + autoPlay);
-            if (autoPlay) _player.Play();
+            if (_autoPlayIntent) _player.Play();
             else _player.Pause();
             UpdateSmtc(song);
             OnPropertyChanged(nameof(CurrentQuality));
             OnPropertyChanged(nameof(QualityLabel));
+            OnPropertyChanged(nameof(QualityDescription));
+            OnPropertyChanged(nameof(RequestedQuality));
             OnPropertyChanged(nameof(ServerCached));
+            if (refreshSource && song.Platform != "local")
+            {
+                Notify.Show(quality == preferred[0] ? "已切换为" + PlaybackQuality.Name(quality)
+                    : $"{PlaybackQuality.Name(preferred[0])} 暂不可用，当前播放{PlaybackQuality.Name(quality)}");
+            }
         }
         catch (Exception ex)
         {
@@ -499,6 +631,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
             PlaybackFailed?.Invoke(this, ex.Message);
             OnPropertyChanged(nameof(ErrorMessage));
             OnPropertyChanged(nameof(IsLoading));
+            OnPropertyChanged(nameof(QualityLabel));
         }
     }
 
@@ -507,14 +640,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     private List<string> BuildQualityOrder(string? forceQuality)
     {
-        var list = new List<string>();
-        if (!string.IsNullOrWhiteSpace(forceQuality)) list.Add(forceQuality);
-        foreach (var quality in ConfigService.Current.Quality)
-        {
-            if (!list.Contains(quality)) list.Add(quality);
-        }
-        if (list.Count == 0) list.AddRange(new[] { "320k", "128k" });
-        return list;
+        return PlaybackQuality.Order(ConfigService.Current.Quality, forceQuality);
     }
 
     private void Player_MediaOpened(MediaPlayer sender, object args)
@@ -587,10 +713,10 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     {
         if (_current is null) return;
         _silentMode = true;
-        _silentPlaying = true;
+        _silentPlaying = _autoPlayIntent;
         _silentBase = _position;
         _silentStartedAt = DateTime.UtcNow;
-        _isPlaying = true;
+        _isPlaying = _autoPlayIntent;
         _isLoading = false;
         _error = "";
         if (_duration <= TimeSpan.Zero && _current.Interval > 0)
@@ -598,6 +724,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         if (_duration <= TimeSpan.Zero)
             _duration = TimeSpan.FromMinutes(3);
         AppLog.Write("silent playback mode enabled duration=" + _duration);
+        OnPropertyChanged(nameof(QualityLabel));
         OnPropertyChanged(nameof(IsPlaying));
         OnPropertyChanged(nameof(PlayGlyph));
         OnPropertyChanged(nameof(IsLoading));
@@ -653,13 +780,14 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         _dispatcher.TryEnqueue(() =>
         {
             if (_silentMode) return;
+            if (StopAfterTrack) { SetSleep(0); Pause(); SavePlayback(); return; }
             if (_repeatMode == "one")
             {
                 sender.PlaybackSession.Position = TimeSpan.Zero;
                 sender.Play();
                 return;
             }
-            Next();
+            Next(manual: false);
         });
     }
 
@@ -679,7 +807,11 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     private void Tick()
     {
+        _ = PrefetchNextAsync();
+        if (SleepUntil is { } until && DateTime.UtcNow >= until) { SetSleep(0); _loadToken++; _isLoading = false; Pause(); }
+        if ((DateTime.UtcNow - _lastCheckpoint).TotalSeconds >= 5) { _lastCheckpoint = DateTime.UtcNow; SavePlayback(); }
         if (_current is null) return;
+        if (_restored) return;
         if (_silentMode)
         {
             if (_silentPlaying)
@@ -690,6 +822,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
                     _position = _duration;
                     _silentPlaying = false;
                     _isPlaying = false;
+                    if (StopAfterTrack) { SetSleep(0); SavePlayback(); return; }
                     OnPropertyChanged(nameof(IsPlaying));
                     OnPropertyChanged(nameof(PlayGlyph));
                     if (_repeatMode == "one")
@@ -707,7 +840,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
                         OnPropertyChanged(nameof(Position));
                         OnPropertyChanged(nameof(PositionSeconds));
                         OnPropertyChanged(nameof(PositionText));
-                        Next();
+                        Next(manual: false);
                         return;
                     }
                 }
@@ -719,6 +852,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        if (_player.Source is null || _isLoading || _pendingSeek is not null) return;
         var session = _player.PlaybackSession;
         _position = session.Position;
         if (session.NaturalDuration > TimeSpan.Zero) _duration = session.NaturalDuration;
@@ -731,7 +865,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
     private void UpdateActiveLyric()
     {
         if (Lyrics.Count == 0) return;
-        var seconds = _position.TotalSeconds;
+        var seconds = _position.TotalSeconds + ConfigService.Current.LyricOffset;
         var low = 0;
         var high = Lyrics.Count - 1;
         var index = -1;
@@ -896,6 +1030,10 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsLoading));
         OnPropertyChanged(nameof(PlayGlyph));
         OnPropertyChanged(nameof(PositionText));
+        OnPropertyChanged(nameof(CurrentQuality));
+        OnPropertyChanged(nameof(QualityLabel));
+        OnPropertyChanged(nameof(QualityDescription));
+        OnPropertyChanged(nameof(RequestedQuality));
         OnPropertyChanged(nameof(DurationText));
         OnPropertyChanged(nameof(DurationSeconds));
         CurrentChanged?.Invoke(this, EventArgs.Empty);
@@ -903,6 +1041,7 @@ public sealed class MediaService : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        SavePlayback();
         _timer.Stop();
         _player.Dispose();
     }

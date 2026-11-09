@@ -20,6 +20,7 @@ import { ChartPage, ChartsPage } from './pages/Charts'
 import { SquarePage } from './pages/SquarePage'
 import { SquarePlaylistPage } from './pages/SquarePlaylistPage'
 import { SingerPage } from './pages/SingerPage'
+import { AlbumPage } from './pages/AlbumPage'
 import { SettingsPage } from './pages/SettingsPage'
 
 function Routes({ path }: { path: string }) {
@@ -32,6 +33,7 @@ function Routes({ path }: { path: string }) {
   if (path === '/square') return <SquarePage />
   if (path.startsWith('/square/')) return <SquarePlaylistPage id={decodeURIComponent(path.slice('/square/'.length))} />
   if (path.startsWith('/singer/')) return <SingerPage id={decodeURIComponent(path.slice('/singer/'.length))} />
+  if (path.startsWith('/album/')) return <AlbumPage id={decodeURIComponent(path.slice('/album/'.length))} />
   if (path.startsWith('/playlist/')) return <PlaylistPage id={decodeURIComponent(path.slice('/playlist/'.length))} />
   if (path === '/settings') return <SettingsPage />
   if (path.startsWith('/admin')) { window.location.replace('/admin/'); return null }
@@ -72,7 +74,7 @@ function Shell() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if (target && (target.isContentEditable || target.closest('input, textarea, select, button, a, [role="slider"], [role="dialog"]'))) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       if (event.key === ' ') {
         event.preventDefault()

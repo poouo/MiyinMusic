@@ -7,6 +7,7 @@ import type { PlaylistInfo, Song } from '../lib/types'
 import { usePlayer } from '../state/player'
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal'
 import { Cover } from '../components/Cover'
+import { ImportPlaylist } from '../components/ImportPlaylist'
 import { EmptyState } from '../components/EmptyState'
 import { SongList } from '../components/SongList'
 import { ArrowLeftIcon, LoaderIcon, PlayIcon } from '../components/Icons'
@@ -139,6 +140,7 @@ export function SquarePlaylistPage({ id }: { id: string }) {
               ) : null}
               {playlist.description ? <p className="detail-hero__desc">{playlist.description}</p> : null}
               <div className="detail-actions">
+                <ImportPlaylist id={id} />
                 <button
                   className="btn btn--primary"
                   disabled={!songs.length}

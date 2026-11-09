@@ -56,6 +56,7 @@ function mapSong(item: Record<string, any>): Song | null {
     songId: id,
     name,
     singer,
+    artists: singers.filter(s => s.id && s.name).map(s => ({ id: String(s.id), name: String(s.name) })),
     albumName: text(album.name),
     albumId: text(album.id),
     interval: toSeconds(Number(simple.dt) / 1000),
@@ -77,6 +78,7 @@ function mapTrack(item: Record<string, any>): Song | null {
     songId: id,
     name,
     singer: singers.map((s) => text(s.name)).filter(Boolean).join('、'),
+    artists: singers.filter(s => s.id && s.name).map(s => ({ id: String(s.id), name: String(s.name) })),
     albumName: text(album.name),
     albumId: text(album.id),
     interval: toSeconds(Number(item.duration ?? item.dt) / 1000),
@@ -87,6 +89,22 @@ function mapTrack(item: Record<string, any>): Song | null {
 
 export const wyProvider: Provider = {
   id: 'wy',
+  async album(id) {
+    if (!/^\d{1,20}$/.test(id)) throw new Error('专辑 ID 不合法')
+    const response = await request('https://music.163.com/api/v1/album/' + id, { headers: HEADERS, timeoutMs: 12000 })
+    const data = response.json
+    if (data?.code !== 200 || !Array.isArray(data.songs)) throw new Error('专辑暂不可用')
+    return { id: 'wy-' + id, name: text(data.album?.name), singer: text(data.album?.artist?.name), cover: httpsUrl(text(data.album?.picUrl)), songs: data.songs.map(mapTrack).filter((song: Song | null): song is Song => !!song) }
+  },
+  async singerSongs(id, page, limit) {
+    if (!/^\d{1,20}$/.test(id)) throw new Error('歌手 ID 不合法')
+    const response = await request('https://music.163.com/api/v1/artist/songs?'+new URLSearchParams({ id, offset: String((page - 1) * limit), limit: String(limit), order: 'hot', work_type: '1' }), { headers: HEADERS, timeoutMs: 12000 })
+    const data = response.json
+    if (data?.code !== 200 || !Array.isArray(data.songs)) throw new Error('歌手作品暂不可用')
+    const songs = data.songs.map(mapTrack).filter((song: Song | null): song is Song => !!song)
+    const artist = songs.flatMap((song: Song) => song.artists ?? []).find((s: any) => s.id === id)
+    return { singer: { id: 'wy-' + id, platform: 'wy', name: artist?.name ?? '' }, songs, total: Number(data.total ?? songs.length), hasMore: Boolean(data.more) }
+  },
 
   async search(keyword: string, page: number, limit: number): Promise<SearchResult> {
     const p = clampPage(page)

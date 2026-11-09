@@ -8,6 +8,7 @@ import { useToast } from '../state/toast'
 import type { Song } from '../lib/types'
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal'
 import { Cover } from '../components/Cover'
+import { ImportPlaylist } from '../components/ImportPlaylist'
 import { EmptyState } from '../components/EmptyState'
 import { SongList } from '../components/SongList'
 import { ClockIcon, FolderIcon, HeartIcon, ListMusicIcon, PlusIcon, TrashIcon, UserIcon } from '../components/Icons'
@@ -43,10 +44,11 @@ export function LibraryPage() {
         <div>
           <h1 className="page-title">音乐库</h1>
           <p className="page-sub">
-            {auth.user ? '已登录 ' + auth.user.nickname + '，收藏与歌单会保存到账号' : '当前为访客模式，数据只保存在本机'}
+            {auth.user ? auth.offline ? auth.user.nickname + ' · 当前显示本机快照，联网后可同步' : '已登录 ' + auth.user.nickname + '，收藏与歌单会保存到账号' : '当前为访客模式，数据只保存在本机'}
           </p>
         </div>
         <div className="row gap-8">
+          <ImportPlaylist />
           <button className="btn btn--sm btn--primary" onClick={() => setCreating(true)}>
             <PlusIcon size={15} /> 新建歌单
           </button>
@@ -59,7 +61,7 @@ export function LibraryPage() {
             <UserIcon size={16} />
           </div>
           <div className="grow">
-            <div style={{ fontWeight: 650 }}>登录后可跨设备同步</div>
+            <div style={{ fontWeight: 500 }}>登录后可跨设备同步</div>
             <div className="dim" style={{ fontSize: 12.5 }}>
               收藏、歌单和播放记录会保存到服务器，换设备也能接着听。
             </div>
@@ -71,6 +73,7 @@ export function LibraryPage() {
       ) : null}
 
       <div className="chip-row" style={{ marginBottom: 18 }}>
+        {library.data.favoriteSingers?.map(singer => <button key={singer.id} className="chip" onClick={() => navigate('/singer/' + singer.id + '?name=' + encodeURIComponent(singer.name))}>{singer.name}</button>)}
         <button className={'chip' + (tab === 'favorites' ? ' is-active' : '')} onClick={() => setTab('favorites')}>
           <HeartIcon size={14} filled={tab === 'favorites'} /> 喜欢 {favorites.length}
         </button>
@@ -87,7 +90,6 @@ export function LibraryPage() {
           <EmptyState
             icon={<HeartIcon size={24} />}
             title="还没有喜欢的歌"
-            description="在歌曲右侧点击心形按钮，就能把喜欢的歌收进这里。"
             action={
               <button className="btn btn--sm" onClick={() => navigate('/search')}>
                 去搜索

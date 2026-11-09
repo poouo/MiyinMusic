@@ -55,6 +55,7 @@ function mapSong(item: Record<string, any>): Song | null {
     songmid: mid,
     name,
     singer,
+    artists: singers.filter(s => s.mid && s.name).map(s => ({ id: String(s.mid), name: String(s.name) })),
     albumName: text(item.album?.name),
     albumId: albumMid,
     albumMid,
@@ -82,6 +83,7 @@ function mapLegacySong(raw: Record<string, any>): Song | null {
     songmid: mid,
     name,
     singer: singers.map((s) => text(s.name)).filter(Boolean).join('、'),
+    artists: singers.filter(s => s.mid && s.name).map(s => ({ id: String(s.mid), name: String(s.name) })),
     albumName: text(raw.albumname),
     albumId: albumMid,
     albumMid,
@@ -105,6 +107,25 @@ async function musicu(payload: Record<string, unknown>, timeoutMs = 12000): Prom
 
 export const txProvider: Provider = {
   id: 'tx',
+  async album(id) {
+    if (!/^[\w]{1,64}$/.test(id)) throw new Error('专辑 ID 不合法')
+    const response = await musicu({ req_0: { module: 'music.musichallAlbum.AlbumSongList', method: 'GetAlbumSongList', param: { albumMid: id, albumID: 0, begin: 0, num: 500, order: 2 } }, req_1: { module: 'music.musichallAlbum.AlbumInfoServer', method: 'GetAlbumDetail', param: { albumMid: id } } })
+    const data = response.req_0?.data
+    if (response.req_0?.code !== 0 || !Array.isArray(data?.songList)) throw new Error('专辑暂不可用')
+    const songs = data.songList.map((item: any) => mapSong(item.songInfo ?? item)).filter((song: Song | null): song is Song => !!song)
+    if (!songs.length) throw new Error('专辑暂无可读取歌曲')
+    const info = response.req_1?.data
+    return { id: 'tx-' + id, name: text(info?.basicInfo?.albumName) || songs[0].albumName, singer: songs[0].singer, cover: cover(id, ''), songs }
+  },
+  async singerSongs(id, page, limit) {
+    const response = await musicu({ req_0: { module: 'musichall.song_list_server', method: 'GetSingerSongList', param: { singerMid: id, order: 1, begin: (page - 1) * limit, num: limit } } })
+    const data = response.req_0?.data
+    if (response.req_0?.code !== 0 || !Array.isArray(data?.songList)) throw new Error('歌手作品暂不可用')
+    const songs = data.songList.map((item: any) => mapSong(item.songInfo ?? item)).filter((song: Song | null): song is Song => !!song)
+    const artist = songs.flatMap((song: Song) => song.artists ?? []).find((s: any) => s.id === id)
+    const total = Number(data.totalNum ?? data.total ?? songs.length)
+    return { singer: { id: 'tx-' + id, platform: 'tx', name: artist?.name ?? '', pic: 'https://y.gtimg.cn/music/photo_new/T001R500x500M000' + id + '.jpg' }, songs, total, hasMore: page * limit < total }
+  },
 
   async search(keyword: string, page: number, limit: number): Promise<SearchResult> {
     const p = clampPage(page)

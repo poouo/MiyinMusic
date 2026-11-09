@@ -80,8 +80,8 @@ data class HomeData(
     val singers: List<SingerInfo> = emptyList()
 )
 
-private data class ScreenRoute(val tab: Int, val playlist: PlaylistInfo?, val chart: ChartInfo?, val allCharts: Boolean) {
-    val key: String get() = playlist?.let { "playlist:${it.id}" } ?: chart?.let { "chart:${it.id}" } ?: if (allCharts) "charts" else "tab:$tab"
+private data class ScreenRoute(val tab: Int, val playlist: PlaylistInfo?, val chart: ChartInfo?, val allCharts: Boolean, val singer: SingerInfo?) {
+    val key: String get() = playlist?.let { "playlist:${it.id}" } ?: chart?.let { "chart:${it.id}" } ?: singer?.let { "singer:${it.id}" } ?: if (allCharts) "charts" else "tab:$tab"
 }
 
 @Composable
@@ -91,6 +91,7 @@ fun MiYinApp() {
     val api = remember { ApiClient(context) }
     val player = remember { PlaybackEngine.controller(context, api) }
     val scope = rememberCoroutineScope()
+    val libraryMutex = remember { kotlinx.coroutines.sync.Mutex() }
     val view = LocalView.current
     val density = LocalDensity.current
     val savedScreens = rememberSaveableStateHolder()
@@ -107,6 +108,7 @@ fun MiYinApp() {
     var homeError by remember { mutableStateOf<String?>(null) }
     var playlistDetail by remember { mutableStateOf<PlaylistInfo?>(null) }
     var chartDetail by remember { mutableStateOf<ChartInfo?>(null) }
+    var singerDetail by remember { mutableStateOf<SingerInfo?>(null) }
     var showCharts by rememberSaveable { mutableStateOf(false) }
     var showNowPlaying by remember { mutableStateOf(false) }
     var showLogin by remember { mutableStateOf(false) }
@@ -188,11 +190,14 @@ fun MiYinApp() {
 
     LaunchedEffect(Unit) {
         reloadHome()
+        val owner = user?.id
         try {
             val refreshedUser = api.me()
-            if (refreshedUser?.id != user?.id) library = LibraryData()
+            if (owner != user?.id) return@LaunchedEffect
+            if (refreshedUser?.id != user?.id) library = api.cache.libraryFor(refreshedUser)
             user = refreshedUser
-            library = runCatching { api.library() }.getOrDefault(library)
+            val refreshedLibrary = runCatching { api.library() }.getOrNull()
+            if (user?.id == refreshedUser?.id && refreshedLibrary != null) library = refreshedLibrary
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -215,10 +220,10 @@ fun MiYinApp() {
         prefs.themeMode = themeMode
     }
 
-    // 只有正在播放音乐时才允许横屏；暂停 / 未播放时锁定竖屏。
-    LaunchedEffect(player.isPlaying) {
+    // 播放页保持用户方向；暂停不改变歌词布局。
+    LaunchedEffect(showNowPlaying) {
         val activity = context as? Activity
-        activity?.requestedOrientation = if (player.isPlaying || player.isBuffering) {
+        activity?.requestedOrientation = if (showNowPlaying) {
             ActivityInfo.SCREEN_ORIENTATION_USER
         } else {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -226,7 +231,7 @@ fun MiYinApp() {
     }
 
     BackHandler(
-        enabled = showNowPlaying || showLogin || showSettings || playlistDetail != null || chartDetail != null || showCharts
+        enabled = showNowPlaying || showLogin || showSettings || playlistDetail != null || chartDetail != null || singerDetail != null || showCharts
     ) {
         when {
             showNowPlaying -> showNowPlaying = false
@@ -234,6 +239,7 @@ fun MiYinApp() {
             showSettings -> showSettings = false
             playlistDetail != null -> playlistDetail = null
             chartDetail != null -> chartDetail = null
+            singerDetail != null -> singerDetail = null
             showCharts -> showCharts = false
         }
     }
@@ -260,17 +266,20 @@ fun MiYinApp() {
                 Box(Modifier.fillMaxSize().layerBackdrop(wallpaperBackdrop)) {
                     AppBackground(api, player.current?.img, dark)
                 }
-                val route = ScreenRoute(tab, playlistDetail, chartDetail, showCharts)
+                val route = ScreenRoute(tab, playlistDetail, chartDetail, showCharts, singerDetail)
                 Box(
                     Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
                 ) {
-                    CompositionLocalProvider(LocalChromePadding provides chromePadding) {
+                    val libraryOwner = user?.id
+                    CompositionLocalProvider(LocalChromePadding provides chromePadding,
+                        LocalLibraryActions provides LibraryActions(library, player, api,
+                            { if (libraryOwner == user?.id) library = it }, { toast = it }, { if (user == null) { showLogin = true; false } else true }, libraryMutex, { singerDetail = it })) {
                     AnimatedContent(
                         targetState = route,
                         transitionSpec = {
-                            val opening = targetState.playlist != null || targetState.chart != null ||
+                            val opening = targetState.playlist != null || targetState.chart != null || targetState.singer != null ||
                                 (targetState.allCharts && !initialState.allCharts)
                             val direction = if (opening || targetState.tab > initialState.tab) 1 else -1
                             val enter = fadeIn(tween(260, 40)) + slideInHorizontally(tween(360)) { it / 7 * direction }
@@ -283,8 +292,16 @@ fun MiYinApp() {
                         savedScreens.SaveableStateProvider(currentRoute.key) {
                         val playlist = currentRoute.playlist
                         val chart = currentRoute.chart
+                        val singer = currentRoute.singer
                         when {
-                            playlist != null -> PlaylistDetailScreen(
+                            singer != null -> SingerDetailScreen(
+                                api = api, singer = singer, favorites = favorites,
+                                onBack = { singerDetail = null },
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onFavorite = ::toggleFavorite
+                            )
+                            playlist != null -> androidx.compose.runtime.CompositionLocalProvider(
+                                LocalEditingPlaylist provides library.playlists.find { "local:${it.id}" == playlist.id }) { PlaylistDetailScreen(
                                 api = api,
                                 playlist = playlist,
                                 localSongs = library.playlists.find { "local:${it.id}" == playlist.id }?.songs,
@@ -292,7 +309,7 @@ fun MiYinApp() {
                                 onBack = { playlistDetail = null },
                                 onPlay = { songs, index -> playSongs(songs, index) },
                                 onFavorite = ::toggleFavorite
-                            )
+                            ) }
 
                             chart != null -> ChartDetailScreen(
                                 api = api,
@@ -318,6 +335,7 @@ fun MiYinApp() {
                                 onRetry = ::reloadHome,
                                 onPlaylist = { playlistDetail = it },
                                 onChart = { chartDetail = it },
+                                onSinger = { singerDetail = it },
                                 onAllCharts = { showCharts = true },
                                 onPlay = { songs, index -> playSongs(songs, index) },
                                 onSearch = { tab = 1 },
@@ -373,6 +391,7 @@ fun MiYinApp() {
                         tab = it
                         playlistDetail = null
                         chartDetail = null
+                        singerDetail = null
                         showCharts = false
                     },
                     onOpenNowPlaying = { showNowPlaying = true }
@@ -401,11 +420,12 @@ fun MiYinApp() {
                     api = api,
                     onClose = { showLogin = false },
                     onSuccess = { loggedIn ->
-                        library = LibraryData()
+                        library = api.cache.libraryFor(loggedIn)
                         user = loggedIn
                         showLogin = false
                         scope.launch {
-                            library = runCatching { api.library() }.getOrDefault(library)
+                            val refreshed = runCatching { api.library() }.getOrNull()
+                            if (user?.id == loggedIn.id && refreshed != null) library = refreshed
                         }
                     }
                 )
@@ -427,7 +447,7 @@ fun MiYinApp() {
                         scope.launch {
                             runCatching { api.logout() }
                             user = null
-                            library = LibraryData()
+                            library = api.cache.libraryFor(null)
                             showSettings = false
                         }
                     },

@@ -37,12 +37,42 @@ class PlayerController(
     private val api: ApiClient
 ) {
     private val appContext = context.applicationContext
+    fun context(): Context = appContext
     var preferredQuality by mutableStateOf(AppPrefs(appContext).preferredQuality)
         private set
     val exoPlayer: ExoPlayer = PlaybackEngine.player(context)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loadJob: Job? = null
+    private var wantsPlayback = false
+    private val listeningStore = ListeningStore(appContext)
+    private data class Prefetched(val key: String, val at: Long, var result: UrlResult? = null)
+    private var prefetched: Prefetched? = null
+    private fun prefetchNext() {
+        if (!isPlaying || shuffle || repeatMode == RepeatMode.ONE || stopAfterTrack || durationMs - positionMs !in 1..25000) return
+        if (sleepUntil > 0 && sleepUntil < System.currentTimeMillis() + 25000) return
+        val next = PlaybackOrder.nextIndex(queueIndex, queue.size, playbackMode, true) ?: return
+        if (next == queueIndex || next !in queue.indices || (repeatMode == RepeatMode.OFF && queueIndex == queue.lastIndex)) return
+        val song = queue[next]
+        if (OfflineDownloads(appContext).completed(song.key) != null) return
+        val key = song.key + ":" + preferredQuality
+        if (prefetched?.key == key) return
+        val pending = Prefetched(key, System.currentTimeMillis())
+        prefetched = pending
+        scope.launch { runCatching { api.playUrl(song) }.onSuccess { if (prefetched === pending) pending.result = it } }
+    }
+    var sleepUntil by mutableLongStateOf(0L)
+        private set
+    var stopAfterTrack by mutableStateOf(false)
+        private set
+    var lyricOffsetMs by mutableLongStateOf(listeningStore.lyricOffset)
+        private set
+    fun setSleep(minutes: Int) {
+        stopAfterTrack = minutes == -1
+        sleepUntil = if (minutes > 0) System.currentTimeMillis() + minutes * 60000L else 0L
+    }
+    fun setLyricOffset(ms: Long) { lyricOffsetMs = ms.coerceIn(-10000, 10000); listeningStore.lyricOffset = lyricOffsetMs; updateActiveLyric() }
+    private fun checkpoint() { listeningStore.snapshot = PlaybackSnapshot(queue, queueIndex, positionMs) }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -86,10 +116,21 @@ class PlayerController(
         private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
-    var repeatMode by mutableStateOf(RepeatMode.ALL)
+    var repeatMode by mutableStateOf(when (AppPrefs(appContext).playbackMode) {
+        "SEQUENTIAL" -> RepeatMode.OFF
+        "ONE" -> RepeatMode.ONE
+        else -> RepeatMode.ALL
+    })
         private set
-    var shuffle by mutableStateOf(false)
+    var shuffle by mutableStateOf(AppPrefs(appContext).playbackMode == "SHUFFLE")
         private set
+    val playbackMode: PlaybackMode
+        get() = if (shuffle) PlaybackMode.SHUFFLE else when (repeatMode) {
+            RepeatMode.ALL -> PlaybackMode.ALL
+            RepeatMode.ONE -> PlaybackMode.ONE
+            RepeatMode.OFF -> PlaybackMode.SEQUENTIAL
+        }
+    private val shuffleHistory = ArrayDeque<String>()
     var lyrics by mutableStateOf<List<LyricLine>>(emptyList())
         private set
     var activeLyricIndex by mutableIntStateOf(-1)
@@ -98,12 +139,18 @@ class PlayerController(
         private set
 
     init {
+        val saved = listeningStore.snapshot
+        if (saved.index in saved.queue.indices && exoPlayer.mediaItemCount == 0) {
+            queue = saved.queue; queueIndex = saved.index; current = saved.queue[saved.index]
+            positionMs = saved.position.coerceAtLeast(0); durationMs = current!!.interval * 1000L
+        }
         exoPlayer.addListener(playerListener)
         PlaybackBridge.next = { next() }
         PlaybackBridge.previous = { previous() }
         PlaybackBridge.hasQueue = { queue.size > 1 }
 
         scope.launch {
+            var ticks = 0
             while (isActive) {
                 if (exoPlayer.isPlaying || exoPlayer.playbackState == Player.STATE_READY) {
                     positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -111,6 +158,11 @@ class PlayerController(
                     if (d > 0) durationMs = d
                 }
                 updateActiveLyric()
+                prefetchNext()
+                if (sleepUntil > 0 && System.currentTimeMillis() >= sleepUntil) {
+                    loadJob?.cancel(); exoPlayer.playWhenReady = false; exoPlayer.pause(); isBuffering = false; setSleep(0)
+                }
+                if (++ticks % 20 == 0) checkpoint()
                 delay(250)
             }
         }
@@ -118,9 +170,56 @@ class PlayerController(
 
     fun play(songs: List<Song>, index: Int) {
         if (songs.isEmpty()) return
+        shuffleHistory.clear()
         queue = songs
         queueIndex = index.coerceIn(0, songs.lastIndex)
         loadSong(queue[queueIndex])
+    }
+
+    fun enqueue(song: Song, next: Boolean = false) {
+        if (current?.key == song.key) return
+        val currentKey = current?.key
+        val list = queue.filterNot { it.key == song.key }.toMutableList()
+        val currentIndex = list.indexOfFirst { it.key == currentKey }
+        list.add(if (next && currentIndex >= 0) currentIndex + 1 else list.size, song)
+        queue = list
+        queueIndex = list.indexOfFirst { it.key == currentKey }
+        if (current == null) { queueIndex = 0; loadSong(queue[0], autoPlay = false) }
+        checkpoint()
+    }
+
+    fun removeFromQueue(index: Int) {
+        if (index !in queue.indices) return
+        val wasCurrent = index == queueIndex
+        val shouldPlay = exoPlayer.playWhenReady || (isBuffering && wantsPlayback)
+        val list = queue.toMutableList().apply { removeAt(index) }
+        if (list.isEmpty()) { clearQueue(); return }
+        queue = list
+        if (wasCurrent) {
+            loadJob?.cancel()
+            exoPlayer.stop()
+            queueIndex = index.coerceAtMost(list.lastIndex)
+            loadSong(list[queueIndex], autoPlay = shouldPlay)
+        } else if (index < queueIndex) queueIndex--
+        checkpoint()
+    }
+
+    fun moveQueue(from: Int, to: Int) {
+        if (from !in queue.indices || to !in queue.indices) return
+        val key = current?.key
+        queue = queue.toMutableList().apply { add(to, removeAt(from)) }
+        queueIndex = queue.indexOfFirst { it.key == key }
+        checkpoint()
+    }
+
+    fun clearQueue() {
+        loadJob?.cancel()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        queue = emptyList(); queueIndex = -1; current = null
+        lyrics = emptyList(); positionMs = 0; durationMs = 0
+        isPlaying = false; isBuffering = false; shuffleHistory.clear()
+        checkpoint()
     }
 
     fun playAt(index: Int) {
@@ -131,6 +230,9 @@ class PlayerController(
 
     private fun loadSong(song: Song, startPositionMs: Long = 0L, autoPlay: Boolean = true) {
         loadJob?.cancel()
+        wantsPlayback = autoPlay
+        exoPlayer.pause()
+        exoPlayer.clearMediaItems()
         current = song
         CarLyrics.setSong(song)
         DesktopLyrics.setSong(song)
@@ -141,10 +243,14 @@ class PlayerController(
         lyrics = emptyList()
         activeLyricIndex = -1
         qualityLabel = ""
+        checkpoint()
 
         loadJob = scope.launch {
             try {
-                val result = api.playUrl(song)
+                val offline = OfflineDownloads(appContext).completed(song.key)
+                val cached = prefetched?.takeIf { it.key == song.key + ":" + preferredQuality && System.currentTimeMillis() - it.at < 45000 }?.result
+                prefetched = null
+                val result = if (offline != null) UrlResult(playUrl = java.io.File(offline.path).toURI().toString(), quality = offline.quality) else cached ?: api.playUrl(song)
                 if (result.playUrl.isBlank()) throw IllegalStateException("没有获取到播放地址")
                 qualityLabel = when (result.quality) {
                     "flac24bit" -> "Hi-Res"
@@ -152,7 +258,7 @@ class PlayerController(
                     "320k" -> "HQ"
                     else -> "标准"
                 }
-                val url = api.absoluteUrl(result.playUrl)
+                val url = if (offline != null) result.playUrl else api.absoluteUrl(result.playUrl)
                 val headers = buildMap {
                     api.cookieHeader()?.let { put("Cookie", it) }
                 }
@@ -176,7 +282,7 @@ class PlayerController(
                     .setCache(PlaybackCache.get(appContext))
                     .setUpstreamDataSourceFactory(sourceFactory)
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                val mediaSource = ProgressiveMediaSource.Factory(cachedSource)
+                val mediaSource = ProgressiveMediaSource.Factory(if (offline != null) androidx.media3.datasource.DefaultDataSource.Factory(appContext) else cachedSource)
                     .createMediaSource(mediaItem)
 
                 exoPlayer.setMediaSource(mediaSource, startPositionMs)
@@ -207,6 +313,8 @@ class PlayerController(
 
     fun toggle() {
         if (current == null) return
+        if (isBuffering && wantsPlayback) { wantsPlayback = false; loadJob?.cancel(); exoPlayer.pause(); isBuffering = false; return }
+        if (exoPlayer.mediaItemCount == 0) { loadSong(current!!, positionMs); return }
         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
     }
 
@@ -222,21 +330,22 @@ class PlayerController(
 
     fun next(auto: Boolean = false) {
         if (queue.isEmpty()) return
+        if (auto && stopAfterTrack) { setSleep(0); exoPlayer.pause(); checkpoint(); return }
         if (auto && repeatMode == RepeatMode.ONE) {
             exoPlayer.seekTo(0)
             exoPlayer.play()
             return
         }
-        val nextIndex = if (shuffle && queue.size > 1) {
-            queue.indices.filter { it != queueIndex }.random()
-        } else {
-            queueIndex + 1
+        val nextIndex = PlaybackOrder.nextIndex(queueIndex, queue.size, playbackMode, auto)
+        if (nextIndex == null) {
+            exoPlayer.pause()
+            return
         }
-        if (nextIndex > queue.lastIndex) {
-            if (repeatMode == RepeatMode.ALL) playAt(0) else exoPlayer.pause()
-        } else {
-            playAt(nextIndex)
+        if (shuffle) {
+            current?.key?.let { shuffleHistory.addLast(it) }
+            if (shuffleHistory.size > 100) shuffleHistory.removeFirst()
         }
+        playAt(nextIndex)
     }
 
     fun previous() {
@@ -245,7 +354,18 @@ class PlayerController(
             exoPlayer.seekTo(0)
             return
         }
-        val prevIndex = if (queueIndex <= 0) queue.lastIndex else queueIndex - 1
+        if (shuffle) {
+            while (shuffleHistory.isNotEmpty()) {
+                val key = shuffleHistory.removeLast()
+                val previousIndex = queue.indexOfFirst { it.key == key }
+                if (previousIndex >= 0) { playAt(previousIndex); return }
+            }
+            PlaybackOrder.nextIndex(queueIndex, queue.size, PlaybackMode.SHUFFLE, false)?.let { playAt(it) }
+            return
+        }
+        val prevIndex = if (queueIndex <= 0) {
+            if (repeatMode == RepeatMode.OFF) 0 else queue.lastIndex
+        } else queueIndex - 1
         playAt(prevIndex)
     }
 
@@ -253,6 +373,7 @@ class PlayerController(
         val target = if (durationMs > 0) ms.coerceIn(0L, durationMs) else ms.coerceAtLeast(0L)
         exoPlayer.seekTo(target)
         positionMs = target
+        checkpoint()
         updateActiveLyric()
     }
 
@@ -261,15 +382,22 @@ class PlayerController(
     }
 
     fun toggleRepeat() {
-        repeatMode = when (repeatMode) {
-            RepeatMode.ALL -> RepeatMode.ONE
-            RepeatMode.ONE -> RepeatMode.OFF
-            RepeatMode.OFF -> RepeatMode.ALL
+        val nextMode = playbackMode.next()
+        shuffle = nextMode == PlaybackMode.SHUFFLE
+        repeatMode = when (nextMode) {
+            PlaybackMode.SEQUENTIAL -> RepeatMode.OFF
+            PlaybackMode.ONE -> RepeatMode.ONE
+            else -> RepeatMode.ALL
         }
+        shuffleHistory.clear()
+        AppPrefs(appContext).playbackMode = nextMode.name
     }
 
     fun toggleShuffle() {
         shuffle = !shuffle
+        repeatMode = RepeatMode.ALL
+        shuffleHistory.clear()
+        AppPrefs(appContext).playbackMode = playbackMode.name
     }
 
     fun clearError() {
@@ -281,11 +409,12 @@ class PlayerController(
             activeLyricIndex = -1
             return
         }
-        val index = lyrics.indexOfLast { it.timeMs <= positionMs }
+        val index = lyrics.indexOfLast { it.timeMs <= positionMs + lyricOffsetMs }
         if (index != activeLyricIndex) activeLyricIndex = index
     }
 
     fun release() {
+        checkpoint()
         loadJob?.cancel()
         scope.cancel()
         exoPlayer.removeListener(playerListener)

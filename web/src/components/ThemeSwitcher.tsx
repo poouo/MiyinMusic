@@ -36,6 +36,8 @@ export function ThemeSwitcher({ variant = 'fab' }: Props) {
         className={variant === 'fab' ? 'theme-fab' : 'icon-btn'}
         onClick={() => setOpen((prev) => !prev)}
         aria-label="切换主题"
+        aria-expanded={open}
+        aria-haspopup="menu"
         title={'主题：' + active.name}
       >
         {variant === 'fab' ? (
@@ -70,7 +72,7 @@ export function ThemeSwitcher({ variant = 'fab' }: Props) {
               >
                 <span
                   className="theme-swatch"
-                  style={{ background: 'linear-gradient(150deg, ' + theme.dots[0] + ', ' + theme.dots[1] + '55)' }}
+                  style={{ background: theme.dots[0] }}
                 >
                   <span className="theme-swatch__dots">
                     <i style={{ background: theme.dots[1] }} />
@@ -82,7 +84,6 @@ export function ThemeSwitcher({ variant = 'fab' }: Props) {
               </button>
             ))}
           </div>
-          <div className="quality-popover__hint">主题会保存在本机，下次打开自动恢复。</div>
         </div>
       ) : null}
     </div>

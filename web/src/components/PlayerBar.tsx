@@ -11,7 +11,7 @@ import { Modal } from './Modal'
 import { QueueList } from './QueueList'
 import { QualityMenu } from './QualityMenu'
 import {
-  ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   DownloadIcon,
   HeartIcon,
@@ -21,14 +21,12 @@ import {
   MusicIcon,
   PauseIcon,
   PlayIcon,
-  RepeatIcon,
-  ShuffleIcon,
   SkipBackIcon,
   SkipForwardIcon,
-  VolumeIcon,
-  VolumeMuteIcon,
 } from './Icons'
 import { Range } from './Range'
+import { VolumeControl } from './VolumeControl'
+import { PlaybackModeButton } from './PlaybackModeButton'
 
 export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }) {
   const player = usePlayer()
@@ -67,7 +65,10 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
 
   return (
     <>
-      <div className="player glass-bar">
+      <div className="player glass-bar" onClick={event => {
+        if (!(event.target instanceof Element) || event.target.closest('button, input, [role="slider"], [role="menu"], .player__meta, .player__cover, .player__stage')) return
+        onOpenNowPlaying()
+      }}>
         <div className="player__now">
           <Cover song={current} className="player__cover" radius={12} onClick={onOpenNowPlaying} />
           <div className="player__meta" onClick={onOpenNowPlaying}>
@@ -77,13 +78,7 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
         </div>
 
         <div className="player__transport">
-          <button
-            className={'icon-btn' + (player.shuffle ? ' icon-btn--active' : '')}
-            title={player.shuffle ? '随机播放：开' : '随机播放'}
-            onClick={player.toggleShuffle}
-          >
-            <ShuffleIcon size={15} />
-          </button>
+          <PlaybackModeButton />
           <button className="icon-btn" title="上一首" onClick={player.prev}>
             <SkipBackIcon size={18} />
           </button>
@@ -92,13 +87,6 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
           </button>
           <button className="icon-btn" title="下一首" onClick={() => player.next()}>
             <SkipForwardIcon size={18} />
-          </button>
-          <button
-            className={'icon-btn' + (player.repeat !== 'off' ? ' icon-btn--active' : '')}
-            title={player.repeat === 'one' ? '单曲循环' : player.repeat === 'all' ? '列表循环' : '顺序播放'}
-            onClick={player.cycleRepeat}
-          >
-            <RepeatIcon size={15} one={player.repeat === 'one'} />
           </button>
         </div>
 
@@ -144,15 +132,9 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
           <button className="icon-btn" title="播放队列" onClick={() => setQueueOpen(true)}>
             <ListMusicIcon size={17} />
           </button>
-          <button className="icon-btn" title={player.muted ? '取消静音' : '静音'} onClick={player.toggleMute}>
-            {player.muted || player.volume === 0 ? (
-              <VolumeMuteIcon size={17} />
-            ) : (
-              <VolumeIcon size={17} level={player.volume > 0.5 ? 2 : 1} />
-            )}
-          </button>
-          <button className="icon-btn" title="收起播放条" onClick={() => update({ compactPlayer: true })}>
-            <ChevronDownIcon size={18} />
+          <VolumeControl />
+          <button className="icon-btn" title="向左收起播放条" aria-label="收起播放条" onClick={() => update({ compactPlayer: true })}>
+            <ChevronLeftIcon size={18} />
           </button>
         </div>
       </div>

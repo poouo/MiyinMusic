@@ -49,6 +49,8 @@ import { logger } from './log.js'
 import { decodeTarget, proxyStream } from './stream.js'
 import { sessionCache } from './session-cache.js'
 import { qualityOrder } from './quality.js'
+import { fullPlaylist, resolvePlaylistLink } from './playlist-import.js'
+import { recommendations } from './recommendations.js'
 
 const log = logger('api')
 const SESSION_COOKIE = 'miyin_token'
@@ -220,14 +222,7 @@ function safeFilename(song: { singer?: string; name?: string }, quality: Quality
 }
 
 function publicLibrary(userId: string) {
-  const data = library.getLibrary(userId)
-  return {
-    favorites: data.favorites,
-    playlists: data.playlists,
-    history: data.history,
-    settings: data.settings,
-    updatedAt: data.updatedAt,
-  }
+  return toSafeLibrary(library.getLibrary(userId))
 }
 
 /** 主 API 分发；返回 false 表示该路径未匹配 */
@@ -395,6 +390,16 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       if (body.all) unlockAll()
       writeAudit({ userId: actor.id, username: actor.username, action: 'admin.unlock', detail: '解除了 ' + removed + ' 条登录限制' })
       sendJson(res, 200, { ok: true, removed })
+      return true
+    }
+
+    const adminFavoritesMatch = /^\/api\/admin\/users\/([^/]+)\/favorites$/.exec(pathname)
+    if (adminFavoritesMatch && method === 'GET') {
+      sendJson(res, 200, admin.userFavorites(decodeURIComponent(adminFavoritesMatch[1]), {
+        q: url.searchParams.get('q') ?? '',
+        page: Number(url.searchParams.get('page') ?? 1),
+        limit: Number(url.searchParams.get('limit') ?? 50),
+      }))
       return true
     }
 
@@ -665,6 +670,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     return true
   }
 
+  if (pathname === '/api/playlists/preview' && method === 'POST') {
+    requireUser(req)
+    const body = await readJson<{ link?: string; id?: string }>(req)
+    const id = body.id ?? await resolvePlaylistLink(String(body.link ?? '').slice(0, 4000))
+    sendJson(res, 200, await fullPlaylist(id))
+    return true
+  }
   const publicPlaylistMatch = /^\/api\/playlist\/([^/]+)$/.exec(pathname)
   if (publicPlaylistMatch && method === 'GET') {
     const detail = await discover
@@ -704,14 +716,27 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     return true
   }
 
+  if (pathname === '/api/discover/for-you' && method === 'GET') {
+    const user = currentUser(req)
+    const items = await recommendations(user ? library.getLibrary(user.id) : null, user?.id ?? 'guest')
+    sendJson(res, 200, { items: items.map(item => ({ ...item, song: withProxyImages({ list: [item.song] }).list[0] })) })
+    return true
+  }
+  const albumMatch = /^\/api\/album\/(tx|wy)-([\w-]{1,64})$/.exec(pathname)
+  if (albumMatch && method === 'GET') {
+    const detail = await getProvider(albumMatch[1] as Platform).album!(albumMatch[2]).catch(err => { throw contentError(err) })
+    sendJson(res, 200, { ...detail, cover: detail.cover ? imageProxy(detail.cover) : null, songs: withProxyImages({ list: detail.songs }).list })
+    return true
+  }
   const singerMatch = /^\/api\/singer\/([^/]+)$/.exec(pathname)
   if (singerMatch && method === 'GET') {
     const detail = await discover
-      .getSinger(decodeURIComponent(singerMatch[1]), url.searchParams.get('name') ?? '')
+      .getSinger(decodeURIComponent(singerMatch[1]), url.searchParams.get('name') ?? '', Number(url.searchParams.get('page') ?? 1))
       .catch((err) => {
         throw contentError(err)
       })
     sendJson(res, 200, {
+      total: detail.total, hasMore: detail.hasMore, page: detail.page, source: detail.source,
       singer: { ...detail.singer, pic: detail.singer.pic ? imageProxy(detail.singer.pic) : null },
       songs: withProxyImages({ list: detail.songs }).list,
     })
@@ -764,23 +789,33 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     const song = library.sanitizeSong(body.song)
     const allowed = qualityOrder(body.qualities)
 
-    // 服务端已经缓存过（歌单 / 收藏预热）就直接放本地文件，音源失效也能继续听
+    // A lower-quality cache is a fallback, not a reason to skip the requested quality.
     const cached = audioCache.lookup(song, allowed)
-    if (cached) {
+    const sendCached = () => {
+      if (!cached) return
       sendJson(res, 200, {
         playUrl: streamUrl('cache:' + cached.key, req),
         quality: cached.quality,
         platform: song.platform,
         cached: true,
       })
-      return true
     }
+    if (cached?.quality === allowed[0]) { sendCached(); return true }
 
-    const result = await withDeadline(
-      sourceManager.getMusicUrl(song, allowed, body.sourceId, true),
-      12000,
-      '获取播放地址超时，请稍后重试或换一首',
-    )
+    // Only request qualities preferred over the available cache. If all fail,
+    // cached playback remains available even when the source is offline.
+    const preferred = cached ? allowed.slice(0, allowed.indexOf(cached.quality)) : allowed
+    let result: Awaited<ReturnType<typeof sourceManager.getMusicUrl>>
+    try {
+      result = await withDeadline(
+        sourceManager.getMusicUrl(song, preferred, body.sourceId, true),
+        12000,
+        '获取播放地址超时，请稍后重试或换一首',
+      )
+    } catch (error) {
+      if (!cached) throw error
+      sendCached(); return true
+    }
     // 默认只给同源代理地址；桌面客户端可以要 directUrl 用于本地缓存
     sendJson(res, 200, {
       playUrl: streamUrl(result.url, req),
@@ -1094,6 +1129,26 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     return true
   }
 
+  if (pathname === '/api/library/singers' && method === 'POST') {
+    const user = requireUser(req)
+    const body = await readJson<{ singer?: { id?: string; platform?: Platform; name?: string; pic?: string } }>(req)
+    const singer = body.singer
+    if (!singer || !['tx', 'wy'].includes(singer.platform ?? '') || typeof singer.id !== 'string' || !/^(?:(?:tx|wy)-)?[\w]{1,64}$/.test(singer.id) || typeof singer.name !== 'string' || !singer.name.trim()) throw new HttpError(400, '歌手信息不完整')
+    const id = singer.platform + '-' + singer.id!.replace(/^(tx|wy)-/, '')
+    const data = library.getLibrary(user.id)
+    const list = library.sanitizeSingers(data.settings.favoriteSingers)
+    if (!list.some(item => item.id === id) && list.length >= 100) throw new HttpError(400, '最多关注 100 位歌手')
+    sendJson(res, 200, { library: toSafeLibrary(library.updateSettings(user.id, { favoriteSingers: [{ id, platform: singer.platform, name: singer.name.trim().slice(0, 80), pic: typeof singer.pic === 'string' ? singer.pic.slice(0, 500) : null }, ...list.filter(item => item.id !== id)] })) })
+    return true
+  }
+  if (pathname.startsWith('/api/library/singers/') && method === 'DELETE') {
+    const user = requireUser(req)
+    const data = library.getLibrary(user.id)
+    const list = library.sanitizeSingers(data.settings.favoriteSingers)
+    sendJson(res, 200, { library: toSafeLibrary(library.updateSettings(user.id, { favoriteSingers: list.filter(item => item.id !== decodeURIComponent(pathname.slice('/api/library/singers/'.length))) })) })
+    return true
+  }
+
   const playlistMatch = /^\/api\/library\/playlists\/([^/]+)(\/songs|\/order)?(?:\/([^/]+))?$/.exec(pathname)
   if (playlistMatch) {
     const user = requireUser(req)
@@ -1136,6 +1191,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
 
 function toSafeLibrary(data: library.UserLibrary) {
   return {
+    favoriteSingers: library.sanitizeSingers(data.settings.favoriteSingers),
     favorites: data.favorites,
     playlists: data.playlists,
     history: data.history,

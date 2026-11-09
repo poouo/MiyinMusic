@@ -21,6 +21,12 @@ public sealed class ApiException : Exception
 
 public static class ApiService
 {
+    public static Task<AlbumDetail> GetAlbumAsync(string id) => SendAsync<AlbumDetail>(HttpMethod.Get, "/api/album/" + Uri.EscapeDataString(id));
+    public static Task<Recommendations> GetRecommendationsAsync() => SendAsync<Recommendations>(HttpMethod.Get, "/api/discover/for-you");
+    public static Task<SingerDetailResponse> GetSingerPageAsync(SingerInfo singer, int page) => SendAsync<SingerDetailResponse>(HttpMethod.Get, "/api/singer/" + Uri.EscapeDataString(singer.Id) + "?name=" + Uri.EscapeDataString(singer.Name) + "&page=" + page);
+    public static async Task FollowSingerAsync(SingerInfo singer, bool remove) => _ = await SendAsync<LibraryResponse>(remove ? HttpMethod.Delete : HttpMethod.Post, "/api/library/singers" + (remove ? "/" + Uri.EscapeDataString(singer.Id) : ""), remove ? null : new { singer });
+    public static Task<PlaylistDetailResponse> PreviewPlaylistAsync(string? link = null, string? id = null) =>
+        SendAsync<PlaylistDetailResponse>(HttpMethod.Post, "/api/playlists/preview", new { link, id });
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -133,6 +139,8 @@ public static class ApiService
 
         using (response)
         {
+            if (auth && !path.StartsWith("/api/auth/", StringComparison.Ordinal) && token != ConfigService.Current.Token)
+                throw new OperationCanceledException("账号已切换，忽略旧账号请求结果");
             CaptureToken(response);
             if (!response.IsSuccessStatusCode) throw CreateError(response.StatusCode, text);
             if (string.IsNullOrWhiteSpace(text)) return default!;

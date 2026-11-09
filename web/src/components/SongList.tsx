@@ -1,4 +1,5 @@
 import { useLibrary } from '../state/library'
+import { navigate } from '../lib/router'
 import { usePlayer } from '../state/player'
 import { useDownload } from '../lib/useDownload'
 import { formatDuration } from '../lib/format'
@@ -53,11 +54,11 @@ export function SongList({
         return (
           <div
             key={key + '_' + index}
-            className={'song-row' + (isCurrent ? ' is-current' : '')}
+            className={'song-row' + (!showAlbum ? ' song-row--no-album' : '') + (isCurrent ? ' is-current' : '')}
             onDoubleClick={() => (onPlay ? onPlay(index) : player.playSong(song, songs))}
           >
             {showIndex ? (
-              <div className="song-row__index" onClick={() => (onPlay ? onPlay(index) : player.playSong(song, songs))}>
+              <button className="song-row__index" aria-label={'播放 ' + song.name} onClick={() => (onPlay ? onPlay(index) : player.playSong(song, songs))}>
                 {isCurrent ? (
                   isPlaying ? (
                     <PauseIcon size={15} />
@@ -72,24 +73,24 @@ export function SongList({
                     </span>
                   </>
                 )}
-              </div>
+              </button>
             ) : (
-              <div />
+              <div className="song-row__index" />
             )}
 
             <Cover song={song} className="song-row__cover" radius={9} />
 
-            <div className="grow song-row__main" onClick={() => (onPlay ? onPlay(index) : player.playSong(song, songs))}>
+            <button className="grow song-row__main" aria-label={'播放 ' + song.name} onClick={() => (onPlay ? onPlay(index) : player.playSong(song, songs))}>
               <div className="song-row__name ellipsis">
                 {song.name}
                 {showPlatform ? <span className="song-row__platform">{PLATFORM_NAMES[song.platform]}</span> : null}
               </div>
               <div className="song-row__singer song-row__singer--stack ellipsis">{song.singer || '未知歌手'}</div>
-            </div>
+            </button>
 
-            <div className="song-row__singer song-row__singer--col ellipsis">{song.singer || '未知歌手'}</div>
+            <div className="song-row__singer song-row__singer--col ellipsis">{song.artists?.length ? song.artists.map((artist, i) => <span key={artist.id}>{i > 0 ? '、' : ''}<a href={'#/singer/' + song.platform + '-' + artist.id + '?name=' + encodeURIComponent(artist.name)}>{artist.name}</a></span>) : song.singer || '未知歌手'}</div>
 
-            {showAlbum ? <div className="song-row__album ellipsis">{song.albumName || '—'}</div> : <div />}
+            {showAlbum ? <div className="song-row__album ellipsis">{song.albumId && ['tx', 'wy'].includes(song.platform) ? <a href={'#/album/' + song.platform + '-' + (song.albumMid || song.albumId)}>{song.albumName || '查看专辑'}</a> : song.albumName || '—'}</div> : null}
 
             <div className="song-row__quality" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <QualityTag qualities={song.qualities} />
@@ -98,6 +99,7 @@ export function SongList({
             <div className="song-row__time">{formatDuration(song.interval)}</div>
 
             <div className="song-row__actions">
+              {song.albumId && ['tx', 'wy'].includes(song.platform) && <button className="icon-btn song-album-mobile" title="查看专辑" onClick={() => navigate('/album/' + song.platform + '-' + (song.albumMid || song.albumId))}>专辑</button>}
               <button
                 className={'icon-btn' + (favorite ? ' icon-btn--active' : '')}
                 title={favorite ? '取消收藏' : '收藏'}

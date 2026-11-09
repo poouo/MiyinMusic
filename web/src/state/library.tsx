@@ -2,13 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, ApiError } from '../lib/api'
 import { GuestLibraryKey, loadJson, saveJson } from '../lib/storage'
 import { songKey } from '../lib/types'
-import type { LibraryData, Playlist, Song } from '../lib/types'
+import type { LibraryData, Playlist, Song, SingerInfo } from '../lib/types'
 import { useAuth } from './auth'
 import { useToast } from './toast'
 
 const EMPTY: LibraryData = { favorites: [], playlists: [], history: [], settings: {} }
 
 interface LibraryApi {
+  followSinger: (singer: SingerInfo) => Promise<void>
+  importPlaylist: (playlist: { name: string; description?: string; songs: Song[] }) => Promise<void>
   data: LibraryData
   ready: boolean
   guest: boolean
@@ -56,6 +58,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const toast = useToast()
   const [data, setData] = useState<LibraryData>(() => loadGuest())
   const [ready, setReady] = useState(false)
+  const [visibleOwner, setVisibleOwner] = useState<string | null>(null)
+  const accountRef = useRef(user?.id ?? null)
+  accountRef.current = user?.id ?? null
   const dataRef = useRef(data)
   const migratedRef = useRef(false)
 
@@ -64,20 +69,24 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   // 访客模式：写入本地存储
   useEffect(() => {
-    if (guest) saveJson(GuestLibraryKey, data)
-  }, [data, guest])
+    if (guest && visibleOwner === null) saveJson(GuestLibraryKey, data)
+  }, [data, guest, visibleOwner])
 
   useEffect(() => {
     let cancelled = false
     async function sync() {
       if (!user) {
+        setVisibleOwner(null)
         setData(loadGuest())
         setReady(true)
         return
       }
+      setVisibleOwner(user.id)
+      setData(loadJson<LibraryData>('library.account.' + user.id, EMPTY))
       try {
         const local = loadGuest()
         const result = await api.library()
+        if (cancelled) return
         let library = result.library
         if (!migratedRef.current && isEmpty(library) && !isEmpty(local)) {
           migratedRef.current = true
@@ -104,18 +113,23 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     }
   }, [user, toast])
 
+  useEffect(() => { if (user && ready && visibleOwner === user.id) saveJson('library.account.' + user.id, data) }, [user, data, ready, visibleOwner])
+
   const apply = useCallback((fn: (data: LibraryData) => LibraryData) => {
     setData((prev) => fn(prev))
   }, [])
 
   const runRemote = useCallback(
     async (request: () => Promise<{ library: LibraryData }>, fallbackMessage: string) => {
+      const owner = accountRef.current
       try {
         const result = await request()
+        if (owner !== accountRef.current) return false
         setData(result.library)
+        return true
       } catch (err) {
-        setData(loadGuest())
         toast.error(fallbackMessage + '：' + (err as Error).message)
+        return false
       }
     },
     [toast],
@@ -140,12 +154,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         toast.success(exists ? '已取消收藏' : '已加入喜欢')
         return
       }
-      if (exists) {
-        await runRemote(() => api.removeFavorite(key), '取消收藏失败')
-      } else {
-        await runRemote(() => api.addFavorite(song), '收藏失败')
-      }
-      toast.success(exists ? '已取消收藏' : '已加入喜欢')
+      const saved = exists
+        ? await runRemote(() => api.removeFavorite(key), '取消收藏失败')
+        : await runRemote(() => api.addFavorite(song), '收藏失败')
+      if (saved) toast.success(exists ? '已取消收藏' : '已加入喜欢')
     },
     [apply, runRemote, toast, user],
   )
@@ -184,6 +196,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       }
       try {
         const result = await api.createPlaylist(trimmed)
+        if (user.id !== accountRef.current) return null
         setData(result.library)
         return result.library.playlists[0] ?? null
       } catch (err) {
@@ -241,6 +254,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       }
       try {
         const result = await api.addPlaylistSong(id, song)
+        if (user.id !== accountRef.current) return
         setData(result.library)
         const fresh = result.library.playlists.find((p) => p.id === id)
         toast.success('已添加到《' + (fresh?.name ?? target?.name ?? '歌单') + '》')
@@ -267,9 +281,23 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [apply, runRemote, user],
   )
 
+  const followSinger = useCallback(async (singer: SingerInfo) => {
+    if (!user) { toast.error('请先登录后关注歌手'); return }
+    const id = singer.platform + '-' + singer.id.replace(/^(tx|wy)-/, '')
+    await runRemote(() => dataRef.current.favoriteSingers?.some(item => item.id === id) ? api.unfollowSinger(id) : api.followSinger(singer), '关注操作失败')
+  }, [user, runRemote, toast])
+  const importPlaylist = useCallback(async (playlist: { name: string; description?: string; songs: Song[] }) => {
+    if (!user) throw new Error('请先登录后保存歌单')
+    const result = await api.importLibrary({ playlists: [playlist] })
+    if (user.id !== accountRef.current) return
+    setData(result.library)
+    toast.success('已保存为独立歌单')
+  }, [user, toast])
   const value = useMemo<LibraryApi>(
     () => ({
       data,
+      importPlaylist,
+      followSinger,
       ready,
       guest,
       isFavorite,
@@ -283,6 +311,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       removeFromPlaylist,
     }),
     [
+      importPlaylist,
+      followSinger,
       data,
       ready,
       guest,

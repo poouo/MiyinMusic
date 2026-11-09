@@ -19,25 +19,25 @@ public static class ThemeService
 
     private static Color ColorFor(string key, bool light) => key switch
     {
-        "AppBgBrush" => Hex(light ? "#F5F7FC" : "#0A0C12"),
-        "SidebarBrush" => Hex(light ? "#EDF1F8" : "#0C0F17"),
-        "PlayerBrush" => Hex(light ? "#FFFFFF" : "#0E111A"),
-        "CardBrush" => Hex(light ? "#FFFFFF" : "#141824"),
-        "CardHoverBrush" => Hex(light ? "#F1F4FA" : "#1B2030"),
-        "LineBrush" => Hex(light ? "#DCE3EF" : "#232A3A"),
-        "TextBrush" => Hex(light ? "#182033" : "#EEF2F8"),
-        "TextDimBrush" => Hex(light ? "#5C687C" : "#9AA6BC"),
-        "TextFaintBrush" => Hex(light ? "#8A95A8" : "#6B7690"),
-        "AccentBrush" => Hex(light ? "#0D9F63" : "#2FD07F"),
-        "AccentSoftBrush" => Hex(light ? "#E0F5E9" : "#162A22"),
+        "AppBgBrush" => Hex(light ? "#FAF9F6" : "#151515"),
+        "SidebarBrush" => Hex(light ? "#F0EEEA" : "#191919"),
+        "PlayerBrush" => Hex(light ? "#FFFFFF" : "#1B1B1B"),
+        "CardBrush" => Hex(light ? "#FFFFFF" : "#202020"),
+        "CardHoverBrush" => Hex(light ? "#F4F2ED" : "#282828"),
+        "LineBrush" => Hex(light ? "#DEDAD2" : "#343434"),
+        "TextBrush" => Hex(light ? "#252321" : "#F0EEEA"),
+        "TextDimBrush" => Hex(light ? "#66615B" : "#B4B1AC"),
+        "TextFaintBrush" => Hex(light ? "#716A61" : "#A4A19C"),
+        "AccentBrush" => Hex(light ? "#A64B22" : "#E8A06F"),
+        "AccentSoftBrush" => Hex(light ? "#F6E6DB" : "#352B24"),
         "Accent2Brush" => Hex(light ? "#2E7FE8" : "#57B6FF"),
         "PinkBrush" => Hex(light ? "#D9476C" : "#FF5D8F"),
         "GoldBrush" => Hex(light ? "#B07A12" : "#F5C45C"),
-        "RowHoverBrush" => Hex(light ? "#EDF2FA" : "#151A26"),
+        "RowHoverBrush" => Hex(light ? "#F0EDE7" : "#272727"),
         "BadgeBrush" => Hex(light ? "#EEFFFFFF" : "#99000000"),
         "WhiteBrush" => Hex("#FFFFFF"),
         "BlackBrush" => Hex(light ? "#101827" : "#060A08"),
-        _ => Hex("#9AA6BC"),
+        _ => Hex("#B4B1AC"),
     };
 
     private static Color Hex(string value)

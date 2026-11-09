@@ -185,29 +185,44 @@ export async function getSingers(limit = 12): Promise<SingerInfo[]> {
 export interface SingerDetail {
   singer: SingerInfo
   songs: Song[]
+  total: number
+  hasMore: boolean
+  page: number
+  source: 'catalog' | 'search'
 }
 
-export async function getSinger(id: string, name?: string): Promise<SingerDetail> {
-  const mid = id.replace(/^tx-/, '').slice(0, 64)
+export async function getSinger(id: string, name?: string, page = 1): Promise<SingerDetail> {
+  const platform = id.startsWith('wy-') ? 'wy' : 'tx'
+  const mid = id.replace(/^(tx|wy)-/, '').slice(0, 64)
+  page = Math.max(1, Math.min(100, Math.floor(page) || 1))
+  if (!/^[\w-]{1,64}$/.test(mid)) throw new Error('歌手 ID 不合法')
+  try {
+    return await remember(`singer-catalog:${platform}:${mid}:${page}`, SINGER_SONG_TTL, async () => {
+      const detail = await providers[platform].singerSongs!(mid, page, 40)
+      if (!detail.songs.length && page === 1) throw new Error('暂无作品')
+      return { ...detail, singer: { ...detail.singer, name: detail.singer.name || name || '' }, page, source: 'catalog' as const }
+    })
+  } catch { /* Search fallback is labeled and never presented as a complete discography. */ }
   if (!mid) throw new Error('歌手 ID 不合法')
-  const known = (await getSingers(30).catch(() => [])).find((singer) => singer.id === mid)
+  const known = platform === 'tx' ? (await getSingers(30).catch(() => [])).find((singer) => singer.id === mid) : undefined
   const singerName = (name || known?.name || '').trim().slice(0, 60)
   if (!singerName) throw new Error('缺少歌手名称')
 
-  return remember('singer:' + mid + ':' + singerName, SINGER_SONG_TTL, async () => {
-    const result = await providers.tx.search(singerName, 1, 40)
-    const matched = result.list.filter((song) => song.singer.includes(singerName))
+  return remember('singer:' + platform + ':' + mid + ':' + singerName + ':' + page, SINGER_SONG_TTL, async () => {
+    const result = await providers[platform].search(singerName, page, 40)
+    const matched = result.list.filter((song) => song.singer.split(/[、,&/]/).some(part => part.trim() === singerName))
     return {
       singer: {
-        id: mid,
-        platform: 'tx',
+        id: platform + '-' + mid,
+        platform,
         name: singerName,
-        pic: known?.pic ?? 'https://y.gtimg.cn/music/photo_new/T001R500x500M000' + mid + '.jpg',
+        pic: known?.pic ?? (platform === 'tx' ? 'https://y.gtimg.cn/music/photo_new/T001R500x500M000' + mid + '.jpg' : null),
         followers: known?.followers,
         area: known?.area,
       },
       // 搜索里同名歌手的歌不够时，直接用搜索结果兜底
-      songs: matched.length >= 4 ? matched : result.list,
+      songs: matched,
+      total: result.total, hasMore: result.hasMore, page, source: 'search' as const,
     }
   })
 }

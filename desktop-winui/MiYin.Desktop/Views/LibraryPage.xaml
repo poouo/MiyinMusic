@@ -39,13 +39,12 @@
             </StackPanel>
         </Grid>
 
-        <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" Grid.Row="1" Padding="28,0,28,30" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="10">
+        <Grid Grid.Row="1" Padding="28,0,28,24" RowSpacing="12">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <TextBlock x:Name="EmptyText" Text="" Style="{StaticResource MutedTextStyle}" Margin="0,40,0,0"
                            HorizontalAlignment="Center" Visibility="Collapsed" />
-                <controls:SongListView x:Name="Songs" />
-            </StackPanel>
-        </ScrollViewer>
+                <controls:SongListView x:Name="Songs" Grid.Row="1" />
+        </Grid>
     </Grid>
 </Page>
 

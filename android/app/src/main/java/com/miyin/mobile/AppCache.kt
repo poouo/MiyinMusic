@@ -29,12 +29,17 @@ class AppCache(context: Context) {
         prefs.getString("session", null)?.let { json.decodeFromString<SessionSnapshot>(it) }
     }.getOrNull() ?: SessionSnapshot()).also { changes.value = it }
 
+    fun libraryFor(user: User?): LibraryData = runCatching {
+        prefs.getString("library:" + (user?.id ?: "guest"), null)?.let { json.decodeFromString<LibraryData>(it) }
+    }.getOrNull() ?: LibraryData()
+
     suspend fun saveHome(value: HomeData) = withContext(Dispatchers.IO) {
         prefs.edit().putString("home", json.encodeToString(value)).apply()
     }
 
     suspend fun saveSession(user: User?, library: LibraryData) = withContext(Dispatchers.IO) {
         prefs.edit().putString("session", json.encodeToString(SessionSnapshot(user, library))).apply()
+        prefs.edit().putString("library:" + (user?.id ?: "guest"), json.encodeToString(library)).apply()
         changes.value = SessionSnapshot(user, library)
     }
 }

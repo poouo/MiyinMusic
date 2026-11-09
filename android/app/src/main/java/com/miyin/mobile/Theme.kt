@@ -9,38 +9,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
-val MiYinGreen = Color(0xFF2FD07F)
-val MiYinGreenDark = Color(0xFF0D9F63)
+val MiYinGreen = Color(0xFFE8A06F)
+val MiYinGreenDark = Color(0xFFA64B22)
 
 private val DarkScheme = darkColorScheme(
     primary = MiYinGreen,
-    onPrimary = Color(0xFF06130C),
-    primaryContainer = Color(0xFF163A2A),
-    onPrimaryContainer = Color(0xFF7FF0B6),
+    onPrimary = Color(0xFF211C18),
+    primaryContainer = Color(0xFF352B24),
+    onPrimaryContainer = Color(0xFFF0BC96),
     secondary = Color(0xFF9CC8FF),
-    background = Color(0xFF080B0A),
-    onBackground = Color(0xFFF2F7F3),
-    surface = Color(0xFF111714),
-    onSurface = Color(0xFFF2F7F3),
-    surfaceVariant = Color(0xFF1A211D),
-    onSurfaceVariant = Color(0xFFAAB8B0),
-    outline = Color(0xFF344039),
+    background = Color(0xFF151515),
+    onBackground = Color(0xFFF0EEEA),
+    surface = Color(0xFF202020),
+    onSurface = Color(0xFFF0EEEA),
+    surfaceVariant = Color(0xFF282828),
+    onSurfaceVariant = Color(0xFFB4B1AC),
+    outline = Color(0xFF484542),
     error = Color(0xFFFF6B81)
 )
 
 private val LightScheme = lightColorScheme(
     primary = MiYinGreenDark,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDFF5E9),
-    onPrimaryContainer = Color(0xFF064A2D),
+    primaryContainer = Color(0xFFF6E6DB),
+    onPrimaryContainer = Color(0xFF813D20),
     secondary = Color(0xFF3D6FA8),
-    background = Color(0xFFF5F7F5),
-    onBackground = Color(0xFF111916),
+    background = Color(0xFFFAF9F6),
+    onBackground = Color(0xFF252321),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF111916),
-    surfaceVariant = Color(0xFFEDF2EE),
-    onSurfaceVariant = Color(0xFF5C6A62),
-    outline = Color(0xFFD5DFD8),
+    onSurface = Color(0xFF252321),
+    surfaceVariant = Color(0xFFF0EEEA),
+    onSurfaceVariant = Color(0xFF66615B),
+    outline = Color(0xFFDEDAD2),
     error = Color(0xFFC43C52)
 )
 

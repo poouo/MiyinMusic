@@ -8,6 +8,7 @@ import { AddToPlaylistModal } from '../components/AddToPlaylistModal'
 import { EmptyState } from '../components/EmptyState'
 import { SongList } from '../components/SongList'
 import { AlertIcon, LoaderIcon, SearchIcon } from '../components/Icons'
+import { loadJson, saveJson } from '../lib/storage'
 
 const PAGE_SIZE = 30
 
@@ -28,12 +29,15 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null)
   const [addTarget, setAddTarget] = useState<Song | null>(null)
   const requestRef = useRef(0)
+  const [history, setHistory] = useState<string[]>(() => loadJson('search.history', []))
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const runSearch = useCallback(
     async (keyword: string, target: Platform, pageNumber: number, append: boolean) => {
       if (!keyword.trim()) return
+      if (!append) setHistory(previous => { const next = [keyword.trim(), ...previous.filter(item => item !== keyword.trim())].slice(0, 20); saveJson('search.history', next); return next })
       const token = ++requestRef.current
+      setError(null)
       if (append) setLoadingMore(true)
       else {
         setLoading(true)
@@ -43,7 +47,7 @@ export function SearchPage() {
       try {
         const result = await api.search(target, keyword.trim(), pageNumber, PAGE_SIZE)
         if (token !== requestRef.current) return
-        setSongs((prev) => (append ? [...prev, ...result.result.list] : result.result.list))
+        setSongs((prev) => append ? Array.from(new Map([...prev, ...result.result.list].map(song => [song.platform + '_' + song.songmid, song])).values()) : result.result.list)
         setTotal(result.result.total)
         setHasMore(result.result.hasMore)
         setPage(pageNumber)
@@ -63,7 +67,8 @@ export function SearchPage() {
 
   useEffect(() => {
     const keyword = route.query.get('q') ?? ''
-    const target = (route.query.get('platform') as Platform) || platform
+    const requested = route.query.get('platform') as Platform
+    const target = PLATFORMS.includes(requested) ? requested : settings.defaultPlatform
     setQuery(keyword)
     if (PLATFORMS.includes(target)) setPlatform(target)
     if (keyword) void runSearch(keyword, target, 1, false)
@@ -71,7 +76,10 @@ export function SearchPage() {
       setSongs([])
       setTotal(0)
       setHasMore(false)
+      setLoading(false)
+      setLoadingMore(false)
     }
+    return () => { requestRef.current += 1 }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.path, route.query.toString()])
 
@@ -80,8 +88,8 @@ export function SearchPage() {
     const keyword = query.trim()
     if (!keyword) return
     update({ defaultPlatform: platform })
-    navigate('/search?q=' + encodeURIComponent(keyword) + '&platform=' + platform, { replace: true })
-    void runSearch(keyword, platform, 1, false)
+    if (route.query.get('q') === keyword && route.query.get('platform') === platform) void runSearch(keyword, platform, 1, false)
+    else navigate('/search?q=' + encodeURIComponent(keyword) + '&platform=' + platform, { replace: true })
   }
 
   const switchPlatform = (target: Platform) => {
@@ -90,7 +98,6 @@ export function SearchPage() {
     const keyword = query.trim()
     if (!keyword) return
     navigate('/search?q=' + encodeURIComponent(keyword) + '&platform=' + target, { replace: true })
-    void runSearch(keyword, target, 1, false)
   }
 
   const keyword = route.query.get('q') ?? ''
@@ -123,6 +130,10 @@ export function SearchPage() {
           搜索
         </button>
       </form>
+      {!keyword && history.length > 0 && <div className="chip-row" style={{ marginBottom: 20 }}>
+        {history.map(item => <button className="chip" key={item} onClick={() => navigate('/search?q=' + encodeURIComponent(item) + '&platform=' + platform)}>{item}</button>)}
+        <button className="btn btn--ghost btn--sm" onClick={() => { setHistory([]); saveJson('search.history', []) }}>清空历史</button>
+      </div>}
 
       <div className="chip-row" style={{ marginBottom: 18 }}>
         {PLATFORMS.map((item) => (
@@ -148,7 +159,7 @@ export function SearchPage() {
             </div>
           ))}
         </div>
-      ) : error ? (
+      ) : error && songs.length === 0 ? (
         <EmptyState
           icon={<AlertIcon size={24} />}
           title="搜索出错了"
@@ -167,6 +178,7 @@ export function SearchPage() {
         />
       ) : (
         <>
+          {error && <div role="alert" className="row gap-8" style={{ marginBottom: 16 }}><span>{error}</span><button className="btn btn--sm" disabled={loadingMore} onClick={() => void runSearch(keyword || query, platform, page + 1, true)}>重试此页</button></div>}
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
             <div className="dim" style={{ fontSize: 12.5 }}>
               找到 {total > 0 ? total.toLocaleString() : songs.length} 首 · {PLATFORM_NAMES[platform]}

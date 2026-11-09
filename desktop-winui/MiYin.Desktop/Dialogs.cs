@@ -8,10 +8,36 @@ namespace MiYin.Desktop;
 
 public static class Dialogs
 {
+    public static async Task ImportPlaylistAsync(string? id = null)
+    {
+        if (!AuthService.Instance.IsLoggedIn) { Notify.Show("请先登录后保存歌单", true); return; }
+        if (Root is null) return;
+        try
+        {
+            string? link = null;
+            if (id is null)
+            {
+                var input = new TextBox { PlaceholderText = "QQ 音乐 / 网易云歌单分享链接", Width = 360 };
+                var prompt = new ContentDialog { XamlRoot = Root, RequestedTheme = ThemeService.Current, Title = "导入公开歌单", Content = input, PrimaryButtonText = "读取预览", CloseButtonText = "取消" };
+                if (await prompt.ShowAsync() != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(input.Text)) return;
+                link = input.Text;
+            }
+            var owner = AuthService.Instance.User?.Id;
+            var preview = await ApiService.PreviewPlaylistAsync(link, id);
+            if (owner != AuthService.Instance.User?.Id) return;
+            if (!await ConfirmAsync("保存歌单副本", $"《{preview.Playlist.Name}》 · {preview.Songs.Count} 首\n保存为独立副本，原歌单的后续变更不会影响此副本。")) return;
+            if (owner != AuthService.Instance.User?.Id) return;
+            await ApiService.ImportLibraryAsync(Array.Empty<Song>(), new[] { new Playlist { Name = preview.Playlist.Name, Description = preview.Playlist.Description ?? "", Songs = new(preview.Songs) } }, Array.Empty<Song>());
+            await LibraryService.Instance.ReloadAsync();
+            Notify.Show("已保存到我的歌单");
+        }
+        catch (Exception ex) { Notify.Show("导入失败：" + ex.Message, true); }
+    }
     private static XamlRoot? Root => MainWindow.Instance?.Content.XamlRoot;
 
     public static async Task AddToPlaylistAsync(Song song)
     {
+        if (song.Platform == "local") { Notify.Show("本地文件保留在本地音乐库"); return; }
         if (Root is null) return;
         var panel = new StackPanel { Spacing = 10, Width = 360 };
         var hint = new TextBlock

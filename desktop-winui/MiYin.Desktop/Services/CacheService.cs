@@ -127,16 +127,44 @@ public sealed class CacheService
         }
     }
 
+    private bool CoversQuality(string songKey, string quality)
+    {
+        lock (_gate) return _index.TryGetValue(songKey, out var entry)
+            && IsUsableAudio(entry.Path) && PlaybackQuality.Covers(entry.Quality, quality);
+    }
+
+    private void StoreEntry(string key, CacheEntry entry)
+    {
+        if (_index.TryGetValue(key, out var better) && IsUsableAudio(better.Path) && PlaybackQuality.Covers(better.Quality, entry.Quality))
+        {
+            if (!string.Equals(better.Path, entry.Path, StringComparison.OrdinalIgnoreCase)) TryDeleteCacheFile(entry.Path);
+            return;
+        }
+        if (_index.TryGetValue(key, out var previous) && previous.Path != entry.Path)
+            TryDeleteCacheFile(previous.Path);
+        _index[key] = entry;
+    }
+
+    private void TryDeleteCacheFile(string path)
+    {
+        try
+        {
+            if (string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), Path.GetFullPath(DirectoryPath).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)) File.Delete(path);
+        }
+        catch { /* A playing file can be cleaned up on a later scan. */ }
+    }
+
     /// <summary>后台缓存一首歌（sourceUrl 可以是本地代理地址）。</summary>
     public async Task EnsureAsync(Song song, string sourceUrl, string quality)
     {
         if (!AutoCache || string.IsNullOrWhiteSpace(sourceUrl)) return;
-        if (Contains(song.Key)) return;
-        if (!_active.TryAdd(song.Key, true)) return;
+        if (CoversQuality(song.Key, quality)) return;
+        var activeKey = song.Key + ":" + quality;
+        if (!_active.TryAdd(activeKey, true)) return;
         await _slots.WaitAsync();
         try
         {
-            if (Contains(song.Key)) return;
+            if (CoversQuality(song.Key, quality)) return;
             Directory.CreateDirectory(DirectoryPath);
             var ext = quality.Contains("flac", StringComparison.OrdinalIgnoreCase) ? "flac" : "mp3";
             var safeKey = new string(song.Key.Select(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_').ToArray());
@@ -149,14 +177,14 @@ public sealed class CacheService
                     var existing = new FileInfo(finalPath).Length;
                     lock (_gate)
                     {
-                        _index[song.Key] = new CacheEntry
+                        StoreEntry(song.Key, new CacheEntry
                         {
                             Path = finalPath,
                             Bytes = existing,
                             Quality = quality,
                             LastAccess = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                             CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        };
+                        });
                         EnforceLimitNoLock();
                     }
                     SaveIndex(true);
@@ -211,14 +239,14 @@ public sealed class CacheService
             File.Move(temp, finalPath, true);
             lock (_gate)
             {
-                _index[song.Key] = new CacheEntry
+                StoreEntry(song.Key, new CacheEntry
                 {
                     Path = finalPath,
                     Bytes = received,
                     Quality = quality,
                     LastAccess = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                     CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                };
+                });
                 EnforceLimitNoLock();
             }
             SaveIndex(true);
@@ -230,7 +258,7 @@ public sealed class CacheService
         }
         finally
         {
-            _active.TryRemove(song.Key, out _);
+            _active.TryRemove(activeKey, out _);
             _slots.Release();
         }
     }

@@ -70,7 +70,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
             <ShieldIcon size={19} />
           </div>
           <div className="grow">
-            <div style={{ fontWeight: 700 }}>管理后台</div>
+            <div style={{ fontWeight: 500 }}>管理后台</div>
             <div className="dim" style={{ fontSize: 12.5 }}>
               管理用户、音源与下载权限
             </div>
@@ -104,7 +104,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                       {initials(auth.user.nickname)}
                     </div>
                     <div className="grow">
-                      <div style={{ fontSize: 17, fontWeight: 750 }}>{auth.user.nickname}</div>
+                      <div style={{ fontSize: 17, fontWeight: 500 }}>{auth.user.nickname}</div>
                       <div className="dim" style={{ fontSize: 12.5 }}>
                         @{auth.user.username}
                         {auth.user.role === 'admin' ? (
@@ -122,7 +122,6 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                   <div className="setting-row" style={{ borderTop: '1px solid var(--border)' }}>
                     <div className="grow">
                       <div className="setting-label">昵称</div>
-                      <div className="setting-desc">显示在侧边栏与评论中</div>
                     </div>
                     <div className="row gap-8">
                       <input
@@ -189,7 +188,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                       <UserIcon size={16} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 750 }}>你正在使用访客模式</div>
+                      <div style={{ fontSize: 16, fontWeight: 500 }}>你正在使用访客模式</div>
                       <div className="dim" style={{ fontSize: 13 }}>
                         登录后收藏、歌单、播放记录会保存到服务器，多设备通用。
                       </div>
@@ -208,10 +207,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
 
           {section === 'playback' ? (
             <div className="card card--pad-lg">
-              <div style={{ fontSize: 15, fontWeight: 750, marginBottom: 4 }}>音质偏好</div>
-              <div className="setting-desc" style={{ marginBottom: 8 }}>
-                会优先请求所选音质，音源不支持时自动降级。
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>音质偏好</div>
               <div className="chip-row" style={{ marginBottom: 10 }}>
                 {QUALITIES.map((quality) => (
                   <button
@@ -230,7 +226,6 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
               <div className="setting-row" style={{ marginTop: 8 }}>
                 <div className="grow">
                   <div className="setting-label">显示歌词翻译</div>
-                  <div className="setting-desc">平台提供翻译歌词时，在原文下方显示</div>
                 </div>
                 <button
                   className={'switch' + (settings.showTranslation ? ' is-on' : '')}
@@ -243,10 +238,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
 
           {section === 'appearance' ? (
             <div className="card card--pad-lg">
-              <div style={{ fontSize: 15, fontWeight: 750, marginBottom: 4 }}>主题</div>
-              <div className="setting-desc" style={{ marginBottom: 12 }}>
-                深色更适合夜间听歌，浅色在强光下更清晰。
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>主题</div>
               <div className="theme-grid" style={{ maxWidth: 520 }}>
                 {THEMES.map((theme) => (
                   <button
@@ -256,7 +248,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                   >
                     <span
                       className="theme-swatch"
-                      style={{ background: 'linear-gradient(150deg, ' + theme.dots[0] + ', ' + theme.dots[1] + '55)' }}
+                      style={{ background: theme.dots[0] }}
                     >
                       <span className="theme-swatch__dots">
                         <i style={{ background: theme.dots[1] }} />
@@ -272,7 +264,6 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
               <div className="setting-row" style={{ marginTop: 18 }}>
                 <div className="grow">
                   <div className="setting-label">默认搜索平台</div>
-                  <div className="setting-desc">搜索页与首页默认选中的平台</div>
                 </div>
                 <select
                   className="input"
@@ -297,7 +288,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                   <SlidersIcon size={22} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 800 }}>觅音 MiYin</div>
+                  <div style={{ fontSize: 18, fontWeight: 500 }}>觅音 MiYin</div>
                   <div className="dim" style={{ fontSize: 12.5 }}>版本 1.0.0 · Web 音乐播放器</div>
                 </div>
               </div>

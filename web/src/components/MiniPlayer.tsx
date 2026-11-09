@@ -15,7 +15,7 @@ export function MiniPlayer({ onOpen }: { onOpen: () => void }) {
         <div className="mini-player__progress" style={{ width: percent + '%' }} />
       </Cover>
       <div className="grow" style={{ minWidth: 0 }}>
-        <div className="ellipsis" style={{ fontSize: 13.5, fontWeight: 650 }}>
+        <div className="ellipsis" style={{ fontSize: 13.5, fontWeight: 500 }}>
           {current.name}
         </div>
         <div className="ellipsis mini-player__lyric">{lyric.ready ? lyric.line : current.singer}</div>

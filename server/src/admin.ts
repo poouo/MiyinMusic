@@ -1,6 +1,7 @@
 import { databaseStats, getDb } from './db.js'
 import { countAdmins, countSessions, countUsers, findById, type UserRole, type UserStatus } from './auth.js'
 import { HttpError } from './errors.js'
+import { getFavorites } from './library.js'
 
 export interface AdminUserRow {
   id: string
@@ -198,6 +199,19 @@ export function overview() {
 
   return { stats, series, platforms, topSingers, recentUsers, database: dbStats, generatedAt: now }
 }
+export function userFavorites(userId: string, options: { q?: string; page?: number; limit?: number } = {}) {
+  const user = getUserDetail(userId)
+  const page = Math.max(1, Math.floor(Number.isFinite(options.page) ? options.page! : 1))
+  const limit = Math.min(100, Math.max(1, Math.floor(Number.isFinite(options.limit) ? options.limit! : 50)))
+  const q = (options.q ?? '').trim().toLocaleLowerCase()
+  const favorites = getFavorites(userId)
+  const matches = q ? favorites.filter(({ song }) =>
+    [song.name, song.singer, song.albumName].some(value => String(value ?? '').toLocaleLowerCase().includes(q))) : favorites
+  const total = matches.length
+  return { user, favorites: matches.slice((page - 1) * limit, page * limit),
+    total, totalFavorites: favorites.length, page, limit, hasMore: page * limit < total }
+}
+
 export function userPlaylists(userId: string) {
   const user = getUserDetail(userId)
   const playlists = getDb().prepare(`SELECT p.id, p.name, p.description, p.created_at, p.updated_at,

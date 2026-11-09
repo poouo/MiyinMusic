@@ -1,5 +1,6 @@
 import type {
   AdminOverview,
+  AdminFavorites,
   AdminPlaylistSummary,
   Playlist,
   AdminUser,
@@ -113,12 +114,17 @@ export const api = {
     ),
   playlist: (id: string, params: { offset?: number; limit?: number } = {}) =>
     request<PlaylistDetailResult>('/api/playlist/' + encodeURIComponent(id) + qs({ offset: params.offset, limit: params.limit })),
+  previewPlaylist: (body: { link?: string; id?: string }) => request<PlaylistDetailResult>('/api/playlists/preview', { method: 'POST', body: JSON.stringify(body) }),
   newSongs: (limit = 12) => request<{ songs: Song[] }>('/api/discover/new-songs' + qs({ limit })),
   singers: (limit = 12) => request<{ singers: SingerInfo[] }>('/api/discover/singers' + qs({ limit })),
-  singer: (id: string, name: string) =>
-    request<{ singer: SingerInfo; songs: Song[] }>(
-      '/api/singer/' + encodeURIComponent(id) + qs({ name }),
+  singer: (id: string, name: string, page = 1) =>
+    request<{ singer: SingerInfo; songs: Song[]; total: number; hasMore: boolean; page: number; source: string }>(
+      '/api/singer/' + encodeURIComponent(id) + qs({ name, page }),
     ),
+  album: (id: string) => request<{ id: string; name: string; singer: string; cover?: string; songs: Song[] }>('/api/album/' + encodeURIComponent(id)),
+  forYou: () => request<{ items: { song: Song; reason: string }[] }>('/api/discover/for-you'),
+  followSinger: (singer: SingerInfo) => request<{ library: LibraryData }>('/api/library/singers', { method: 'POST', body: JSON.stringify({ singer }) }),
+  unfollowSinger: (id: string) => request<{ library: LibraryData }>('/api/library/singers/' + encodeURIComponent(id), { method: 'DELETE' }),
 
   lyric: (song: Song) =>
     request<{ lyric: LyricResult }>('/api/lyric', { method: 'POST', body: JSON.stringify({ song }) }),
@@ -137,6 +143,8 @@ export const api = {
 
   // ---- 管理后台（仅管理员；其他人一律 404） ----
   admin: {
+    userFavorites: (userId: string, params: { q?: string; page?: number; limit?: number } = {}) =>
+      request<AdminFavorites>('/api/admin/users/' + encodeURIComponent(userId) + '/favorites' + qs(params)),
     userPlaylists: (userId: string) => request<{ user: AdminUser; playlists: AdminPlaylistSummary[] }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists'),
     playlist: (userId: string, id: string) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists/' + encodeURIComponent(id)),
     createPlaylist: (userId: string, body: { name: string; description: string }) => request<{ playlist: Playlist }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists', { method: 'POST', body: JSON.stringify(body) }),

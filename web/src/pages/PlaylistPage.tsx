@@ -93,7 +93,6 @@ export function PlaylistPage({ id }: { id: string }) {
         <EmptyState
           icon={<PlayIcon size={22} />}
           title="歌单还是空的"
-          description="在任意歌曲右侧点击「添加到歌单」即可加入。"
           action={
             <button className="btn btn--sm" onClick={() => navigate('/search')}>
               去搜索歌曲

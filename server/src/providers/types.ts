@@ -8,6 +8,8 @@ export interface ChartInfo {
 }
 
 export interface Provider {
+  album?(id: string): Promise<{ id: string; name: string; singer: string; cover?: string | null; songs: Song[] }>
+  singerSongs?(id: string, page: number, limit: number): Promise<{ singer: SingerInfo; songs: Song[]; total: number; hasMore: boolean }>
   id: Platform
   /** 搜索歌曲 */
   search(keyword: string, page: number, limit: number): Promise<SearchResult>

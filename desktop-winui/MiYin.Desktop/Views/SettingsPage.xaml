@@ -6,6 +6,17 @@
     <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel Padding="28,16,28,40" Spacing="16" HorizontalAlignment="Stretch">
             <TextBlock Text="设置" Style="{StaticResource PageTitleStyle}" />
+            <Border Style="{StaticResource SettingsCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="本地音乐" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="扫描所选文件夹及子目录中的音频，读取标题、歌手、专辑。每次最多 5000 首。" TextWrapping="Wrap" Style="{StaticResource MutedTextStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="ScanMusicButton" Content="扫描音乐目录" Click="ScanMusic_Click" />
+                        <Button Content="打开本地音乐" Click="OpenLocalMusic_Click" />
+                        <Button Content="清空索引" Click="ClearLocalMusic_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
 
             <Border Style="{StaticResource SettingsCardStyle}">
                 <StackPanel Spacing="12">
@@ -22,13 +33,15 @@
                             <ComboBoxItem Content="深色" Tag="dark" />
                         </ComboBox>
                     </Grid>
-                    <TextBlock Text="跟随系统会随 Windows 的浅色 / 深色模式自动切换。" Style="{StaticResource CaptionTextStyle}" />
                 </StackPanel>
             </Border>
 
             <Border Style="{StaticResource SettingsCardStyle}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="账号" Style="{StaticResource SectionTitleStyle}" />
+                    <Button Content="导入公开歌单" Click="ImportPlaylist_Click" HorizontalAlignment="Left" />
+                    <ComboBox x:Name="FollowingBox" Header="关注的歌手" DisplayMemberPath="Name" Width="260" />
+                    <Button Content="查看歌手作品" Click="OpenFollowing_Click" HorizontalAlignment="Left" />
                     <Grid>
                         <StackPanel Spacing="2">
                             <TextBlock x:Name="AccountNameText" Text="未登录" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource TextBrush}" />
@@ -40,7 +53,6 @@
                             <Button x:Name="LogoutButton" Style="{StaticResource GhostButtonStyle}" Content="退出登录" Click="Logout_Click" Visibility="Collapsed" />
                         </StackPanel>
                     </Grid>
-                    <TextBlock Text="歌单和收藏会同步到服务器，服务端会自动缓存歌单里的歌曲。" Style="{StaticResource CaptionTextStyle}" />
                 </StackPanel>
             </Border>
 
@@ -51,8 +63,6 @@
                                   Toggled="CloseToTray_Toggled" />
                     <ToggleSwitch x:Name="MinimizeToTraySwitch" Header="最小化时隐藏到托盘" OnContent="开启" OffContent="关闭"
                                   Toggled="MinimizeToTray_Toggled" />
-                    <TextBlock Text="托盘图标：左键恢复窗口，右键菜单支持播放 / 暂停、上一首、下一首和退出。若图标被 Windows 折叠，请点任务栏的 ^ 展开。"
-                               Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
@@ -65,12 +75,11 @@
                         <ComboBoxItem Content="晴空 · 蓝紫渐变" Tag="sky" />
                         <ComboBoxItem Content="落霞 · 粉金渐变" Tag="rose" />
                         <ComboBoxItem Content="经典 · 白色描边" Tag="classic" />
-                        <ComboBoxItem Content="玻璃 · 半透明底板" Tag="glass" />
+                        <ComboBoxItem Content="柔白" Tag="glass" />
                     </ComboBox>
                     <Slider x:Name="LyricSizeSlider" Header="歌词字号" Minimum="24" Maximum="60" StepFrequency="2" ValueChanged="LyricsSize_Changed" Width="300" HorizontalAlignment="Left" />
-                    <ToggleSwitch x:Name="LyricDoubleSwitch" Header="双行显示（当前句与下一句）" OnContent="开启" OffContent="关闭" Toggled="Lyrics_Changed" />
-                    <ToggleSwitch x:Name="LyricLockSwitch" Header="锁定位置并穿透鼠标" OnContent="已锁定" OffContent="可拖动" Toggled="Lyrics_Changed" />
-                    <TextBlock Text="支持拖动位置、双击播放/暂停，右键歌词锁定；可在此处或托盘菜单解锁。最小化或隐藏主窗口后仍显示。" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                    <ToggleSwitch x:Name="LyricDoubleSwitch" Header="双行显示" OnContent="开启" OffContent="关闭" Toggled="Lyrics_Changed" />
+                    <ToggleSwitch x:Name="LyricLockSwitch" Header="锁定位置" OnContent="已锁定" OffContent="未锁定" Toggled="Lyrics_Changed" />
                     <Button Content="重置歌词位置" Click="ResetLyrics_Click" HorizontalAlignment="Left" />
                 </StackPanel>
             </Border>
@@ -78,6 +87,10 @@
             <Border Style="{StaticResource SettingsCardStyle}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="播放" Style="{StaticResource SectionTitleStyle}" />
+                    <ComboBox x:Name="SleepBox" Header="睡眠定时" SelectionChanged="Sleep_Changed" Width="260">
+                        <ComboBoxItem Content="关闭" Tag="0"/><ComboBoxItem Content="15 分钟" Tag="15"/><ComboBoxItem Content="30 分钟" Tag="30"/><ComboBoxItem Content="60 分钟" Tag="60"/><ComboBoxItem Content="播完本曲停止" Tag="-1"/>
+                    </ComboBox>
+                    <NumberBox x:Name="OffsetBox" Header="歌词偏移秒数（正值提前）" Minimum="-10" Maximum="10" SmallChange="0.5" ValueChanged="Offset_Changed" Width="260" HorizontalAlignment="Left" />
                     <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="120" />
@@ -87,7 +100,6 @@
                         <ComboBox x:Name="QualityBox" Grid.Column="1" Width="220" Height="34" HorizontalAlignment="Left"
                                   SelectionChanged="QualityBox_SelectionChanged" />
                     </Grid>
-                    <TextBlock Text="播放时优先向音源请求该音质，不支持时自动降级。" Style="{StaticResource CaptionTextStyle}" />
                 </StackPanel>
             </Border>
 

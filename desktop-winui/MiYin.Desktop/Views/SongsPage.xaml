@@ -26,6 +26,8 @@
                 <TextBlock x:Name="DescText" Text="" FontSize="12" Foreground="{ThemeResource TextFaintBrush}" TextWrapping="Wrap"
                            MaxLines="2" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                    <Button x:Name="SavePlaylistButton" Content="保存为我的歌单" Click="SavePlaylist_Click" Visibility="Collapsed" />
+                    <Button x:Name="FollowButton" Content="关注歌手" Click="FollowSinger_Click" Visibility="Collapsed" />
                     <Button x:Name="PlayAllButton" Style="{StaticResource PrimaryButtonStyle}" Click="PlayAll_Click" IsEnabled="False">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE768;" FontSize="12" />
@@ -37,14 +39,13 @@
             <ProgressRing x:Name="LoadingRing" Grid.Column="2" IsActive="True" Width="26" Height="26" Foreground="{ThemeResource AccentBrush}" />
         </Grid>
 
-        <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" Grid.Row="1" Padding="28,0,28,30" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+        <Grid Grid.Row="1" Padding="28,0,28,24" RowSpacing="12">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <TextBlock x:Name="ErrorText" Foreground="{ThemeResource PinkBrush}" FontSize="12" Visibility="Collapsed" TextWrapping="Wrap" />
-                <controls:SongListView x:Name="Songs" />
-                <Button x:Name="LoadMoreButton" Style="{StaticResource GhostButtonStyle}" Content="加载更多歌曲"
+                <controls:SongListView x:Name="Songs" Grid.Row="1" />
+                <Button Grid.Row="2" x:Name="LoadMoreButton" Style="{StaticResource GhostButtonStyle}" Content="加载更多歌曲"
                         HorizontalAlignment="Center" Visibility="Collapsed" Click="LoadMore_Click" />
-            </StackPanel>
-        </ScrollViewer>
+        </Grid>
     </Grid>
 </Page>
 

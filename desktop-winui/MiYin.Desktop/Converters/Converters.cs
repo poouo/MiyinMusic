@@ -137,7 +137,7 @@ public sealed class BoolToActiveBrushConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, string language)
     {
         var active = value is bool b && b;
-        return new SolidColorBrush(active ? Color.FromArgb(255, 47, 208, 127) : Color.FromArgb(255, 154, 166, 188));
+        return MiYin.Desktop.Services.ThemeService.Brush(active ? "AccentBrush" : "TextDimBrush");
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
@@ -147,7 +147,7 @@ public sealed class BoolToActiveBrushConverter : IValueConverter
 public sealed class BoolToOpacityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language) =>
-        value is bool b && b ? 1.0 : 0.45;
+        value is bool b && b ? 1.0 : 0.72;
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>
         throw new NotSupportedException();

@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { navigate, useRoute } from '../lib/router'
+import { useSettings } from '../state/settings'
 import { useAuth } from '../state/auth'
 import { useAuthModal } from '../state/authModal'
 import { useLibrary } from '../state/library'
@@ -7,10 +8,14 @@ import { initials } from '../lib/format'
 import { MiniPlayer } from './MiniPlayer'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   FolderIcon,
+  ActivityIcon,
   HeartIcon,
   HomeIcon,
   LibraryIcon,
+  ListMusicIcon,
   MusicIcon,
   PlusIcon,
   SearchIcon,
@@ -23,6 +28,8 @@ import { Modal } from './Modal'
 const BASE_NAV = [
   { path: '/', label: '发现', icon: HomeIcon },
   { path: '/search', label: '搜索', icon: SearchIcon },
+  { path: '/charts', label: '排行榜', icon: ActivityIcon },
+  { path: '/square', label: '歌单广场', icon: ListMusicIcon },
   { path: '/library', label: '音乐库', icon: LibraryIcon },
   { path: '/settings', label: '设置', icon: SlidersIcon },
 ]
@@ -43,14 +50,30 @@ interface LayoutProps {
 
 export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
   const route = useRoute()
+  const { settings, update } = useSettings()
   const auth = useAuth()
   const authModal = useAuthModal()
   const library = useLibrary()
   const isAdmin = auth.user?.role === 'admin'
-  const NAV = isAdmin ? [...BASE_NAV.slice(0, 3), ADMIN_NAV, BASE_NAV[3]] : BASE_NAV
-  const TABS = isAdmin ? [...BASE_NAV.slice(0, 3).map((item) => ({ ...item })), { path: '/admin', label: '后台', icon: ShieldIcon }, BASE_NAV[3]] : BASE_TABS
+  const NAV = isAdmin ? [...BASE_NAV.slice(0, -1), ADMIN_NAV, BASE_NAV[BASE_NAV.length - 1]] : BASE_NAV
+  const TABS = isAdmin ? [...BASE_TABS.slice(0, 3), { path: '/admin', label: '后台', icon: ShieldIcon }, BASE_TABS[3]] : BASE_TABS
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        navigate('/search')
+        requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.content .searchbox input')?.focus())
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const pageLabel = BASE_NAV.find((item) => item.path === route.path)?.label
+    ?? (route.path === '/liked' ? '我的喜欢' : route.path.startsWith('/singer/') ? '歌手' : '歌单详情')
 
   const isActive = (path: string) =>
     path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(path + '/')
@@ -68,8 +91,8 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="brand" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+      <aside className={"sidebar" + (settings.sidebarCollapsed ? " sidebar--collapsed" : "")}>
+        <button className="brand" onClick={() => navigate('/')} aria-label="觅音首页">
           <div className="brand__mark">
             <MusicIcon size={20} />
           </div>
@@ -77,19 +100,23 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
             <div className="brand__name">觅音</div>
             <div className="brand__sub">MiYin Music</div>
           </div>
-        </div>
+        </button>
 
-        <nav className="nav">
+        <div className="nav__title">听音乐</div>
+        <nav className="nav" aria-label="主导航">
           {NAV.map((item) => {
             const Icon = item.icon
             return (
               <button
                 key={item.path}
                 className={'nav__item' + (isActive(item.path) ? ' is-active' : '')}
+                title={item.label}
+                aria-label={item.label}
+                aria-current={isActive(item.path) ? 'page' : undefined}
                 onClick={() => navigate(item.path)}
               >
-                <Icon size={19} />
-                {item.label}
+                <Icon size={18} />
+                <span>{item.label}</span>
               </button>
             )
           })}
@@ -97,7 +124,7 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
 
         <div className="nav__title row" style={{ justifyContent: 'space-between' }}>
           <span>我的歌单</span>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} title="新建歌单" onClick={() => setCreating(true)}>
+          <button className="icon-btn" style={{ width: 24, height: 24 }} title="新建歌单" aria-label="新建歌单" onClick={() => setCreating(true)}>
             <PlusIcon size={15} />
           </button>
         </div>
@@ -107,15 +134,16 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
             className={'side-playlist' + (route.path === '/liked' ? ' is-active' : '')}
             onClick={() => navigate('/liked')}
             title="我的喜欢"
+            aria-label="我的喜欢"
           >
-            <HeartIcon size={15} filled style={{ color: 'var(--accent-2)' }} />
+            <HeartIcon size={18} />
             <span className="ellipsis">我的喜欢</span>
-            <span className="faint" style={{ fontSize: 11, marginLeft: 'auto' }}>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 'auto' }}>
               {library.data.favorites.length}
             </span>
           </button>
           {library.data.playlists.length === 0 ? (
-            <div className="faint" style={{ padding: '6px 12px 8px', fontSize: 11.5 }}>
+            <div className="faint" style={{ padding: '8px 12px', fontSize: 12 }}>
               还没有自建歌单
             </div>
           ) : (
@@ -125,10 +153,11 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
                 className={'side-playlist' + (isPlaylistActive(playlist.id) ? ' is-active' : '')}
                 onClick={() => navigate('/playlist/' + playlist.id)}
                 title={playlist.name}
+                aria-label={playlist.name}
               >
-                <FolderIcon size={15} />
+                <FolderIcon size={18} />
                 <span className="ellipsis">{playlist.name}</span>
-                <span className="faint" style={{ fontSize: 11, marginLeft: 'auto' }}>
+                <span className="faint" style={{ fontSize: 12, marginLeft: 'auto' }}>
                   {playlist.songs.length}
                 </span>
               </button>
@@ -137,16 +166,19 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
         </div>
 
         <div className="sidebar__footer">
+          <button className="icon-btn sidebar__toggle" onClick={() => update({ sidebarCollapsed: !settings.sidebarCollapsed })} title={settings.sidebarCollapsed ? '展开导航栏' : '收起导航栏'} aria-label={settings.sidebarCollapsed ? '展开导航栏' : '收起导航栏'} aria-expanded={!settings.sidebarCollapsed}>
+            {settings.sidebarCollapsed ? <ChevronRightIcon size={18} /> : <ChevronLeftIcon size={18} />}
+          </button>
           {auth.user ? (
             <button className="user-chip" onClick={() => navigate('/settings')}>
               <div className="avatar" style={{ background: auth.user.avatarColor }}>
                 {initials(auth.user.nickname)}
               </div>
               <div className="grow" style={{ minWidth: 0 }}>
-                <div className="ellipsis" style={{ fontSize: 13, fontWeight: 650 }}>
+                <div className="ellipsis" style={{ fontSize: 13, fontWeight: 500 }}>
                   {auth.user.nickname}
                 </div>
-                <div className="ellipsis faint" style={{ fontSize: 11 }}>
+                <div className="ellipsis faint" style={{ fontSize: 12 }}>
                   {auth.user.role === 'admin' ? '管理员' : auth.user.role === 'vip' ? '会员' : '普通用户'}
                 </div>
               </div>
@@ -157,8 +189,8 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
                 <UserIcon size={16} />
               </div>
               <div className="grow">
-                <div style={{ fontSize: 13, fontWeight: 650 }}>登录 / 注册</div>
-                <div className="faint" style={{ fontSize: 11 }}>同步歌单与收藏</div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>登录 / 注册</div>
+                <div className="faint" style={{ fontSize: 12 }}>同步歌单与收藏</div>
               </div>
             </button>
           )}
@@ -167,15 +199,18 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
 
       <div className="main">
         <header className="topbar">
-          <div className="topbar__brand" onClick={() => navigate('/')}>
-            <div className="brand__mark" style={{ width: 30, height: 30, borderRadius: 9 }}>
+          <button className="topbar__brand" onClick={() => navigate('/')} aria-label="觅音首页">
+            <div className="brand__mark">
               <MusicIcon size={16} />
             </div>
-            <div style={{ fontWeight: 800, letterSpacing: '0.04em' }}>觅音</div>
-          </div>
+            <span>觅音</span>
+          </button>
+          <span className="topbar__context">{pageLabel}</span>
           <div className="grow" />
-          <button className="icon-btn" onClick={() => navigate('/search')} aria-label="搜索">
-            <SearchIcon size={20} />
+          <button className="topbar__search" onClick={() => navigate('/search')} aria-label="搜索音乐">
+            <SearchIcon size={18} />
+            <span>搜索歌曲、歌手</span>
+            <kbd>Ctrl K</kbd>
           </button>
           <ThemeSwitcher variant="icon" />
           <button className="icon-btn" onClick={() => navigate('/settings')} aria-label="设置">
@@ -183,22 +218,21 @@ export function Layout({ children, onOpenNowPlaying }: LayoutProps) {
           </button>
         </header>
 
-        <div className="content" id="main-content">
+        <main className="content" id="main-content">
           {children}
-        </div>
+        </main>
       </div>
-
-      <ThemeSwitcher />
 
       <MiniPlayer onOpen={onOpenNowPlaying} />
 
-      <nav className="mobile-tabs">
+      <nav className="mobile-tabs" aria-label="移动端导航">
         {TABS.map((tab) => {
           const Icon = tab.icon
           return (
             <button
               key={tab.path}
               className={'mobile-tab' + (isActive(tab.path) ? ' is-active' : '')}
+              aria-current={isActive(tab.path) ? 'page' : undefined}
               onClick={() => navigate(tab.path)}
             >
               <Icon size={21} />

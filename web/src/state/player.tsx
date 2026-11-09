@@ -16,15 +16,28 @@ import type { LyricResult, Quality, RepeatMode, Song } from '../lib/types'
 import { useLibrary } from './library'
 import { useSettings } from './settings'
 import { useToast } from './toast'
+import { nextPlaybackMode, nextTrackIndex, playbackMode, playbackSettings, type PlaybackMode } from '../lib/playback'
+import { BrowserEqualizer } from '../lib/equalizer'
+import type { UrlResult } from '../lib/types'
 
 interface PersistedState {
   queue: Song[]
   index: number
   repeat: RepeatMode
   shuffle: boolean
+  position?: number
 }
 
 interface PlayerApi {
+  actualQuality: Quality | null
+  eqEnabled: boolean
+  eqGains: number[]
+  setEqualizer: (enabled: boolean, gains?: number[]) => void
+  sleepUntil: number | null
+  stopAfterTrack: boolean
+  setSleep: (minutes: number | 'track' | null) => void
+  lyricOffset: number
+  setLyricOffset: (seconds: number) => void
   queue: Song[]
   index: number
   current: Song | null
@@ -50,6 +63,7 @@ interface PlayerApi {
   setVolume: (value: number) => void
   toggleMute: () => void
   cycleRepeat: () => void
+  setPlaybackMode: (mode: PlaybackMode) => void
   toggleShuffle: () => void
   setQuality: (quality: Quality) => void
   playAt: (index: number) => void
@@ -80,16 +94,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentTime, setCurrentTime] = useState(0)
+  const [currentTime, setCurrentTime] = useState(persisted.current.position ?? 0)
+  const resumeRef = useRef({ key: queue[index] ? songKey(queue[index]) : undefined, time: persisted.current.position ?? 0 })
+  const [lyricOffset, offsetState] = useState(() => loadJson<number>('lyric.offset', 0))
+  const setLyricOffset = useCallback((seconds: number) => { const value = Math.max(-10, Math.min(10, seconds)); offsetState(value); saveJson('lyric.offset', value) }, [])
+  const [sleepUntil, setSleepUntil] = useState<number | null>(null)
+  const [stopAfterTrack, setStopAfterTrack] = useState(false)
+  const sleepRef = useRef({ until: sleepUntil, track: stopAfterTrack })
+  sleepRef.current = { until: sleepUntil, track: stopAfterTrack }
+  const setSleep = useCallback((minutes: number | 'track' | null) => {
+    setSleepUntil(typeof minutes === 'number' && minutes > 0 ? Date.now() + minutes * 60000 : null)
+    setStopAfterTrack(minutes === 'track')
+  }, [])
   const [duration, setDuration] = useState(0)
   const [volume, setVolumeState] = useState(() => {
     const saved = persisted.current as unknown as { volume?: number }
     return typeof saved.volume === 'number' ? saved.volume : settings.volume
   })
   const [muted, setMuted] = useState(false)
-  const [repeat, setRepeat] = useState<RepeatMode>(persisted.current.repeat ?? 'all')
+  const [repeat, setRepeat] = useState<RepeatMode>(persisted.current.shuffle ? 'all' : persisted.current.repeat ?? 'all')
   const [shuffle, setShuffle] = useState(!!persisted.current.shuffle)
   const [sourceName, setSourceName] = useState<string | null>(null)
+  const [actualQuality, setActualQuality] = useState<Quality | null>(null)
+  const [eqEnabled, setEqEnabled] = useState(false)
+  const [eqGains, setEqGains] = useState<number[]>(() => loadJson('equalizer.gains', [0, 0, 0, 0, 0]))
+  const eqRef = useRef<BrowserEqualizer | null>(null)
+  const prefetched = useRef<{ key: string; at: number; result: UrlResult | null } | null>(null)
   const [lyric, setLyric] = useState<LyricResult | null>(null)
   const [lyricLoading, setLyricLoading] = useState(false)
   const [requestId, setRequestId] = useState(0)
@@ -97,6 +127,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   // 只有用户主动播放（或自动切歌）时才真正开始播放，避免刷新页面触发浏览器自动播放限制
   const intentRef = useRef(false)
+  const sourceDirtyRef = useRef(false)
   const tokenRef = useRef(0)
   const retriedRef = useRef(false)
   const lyricCache = useRef(new Map<string, LyricResult | null>())
@@ -104,13 +135,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const failCountRef = useRef(0)
   const lastErrorRef = useRef({ text: '', at: 0 })
   const goNextRef = useRef<(manual?: boolean) => void>(() => {})
+  const mediaControls = useRef({ play: () => {}, pause: () => {} })
+  const shuffleHistory = useRef<string[]>([])
   const reportFailureRef = useRef<(song: Song | null, reason: string) => void>(() => {})
-  const stateRef = useRef({ queue, index, repeat, shuffle, quality: settings.quality })
+  const stateRef = useRef({ queue, index, repeat, shuffle, playing, loading, quality: settings.quality })
 
   const current = queue[index] ?? null
   const quality = settings.quality[0] ?? '320k'
 
-  stateRef.current = { queue, index, repeat, shuffle, quality: settings.quality }
+  stateRef.current = { queue, index, repeat, shuffle, playing, loading, quality: settings.quality }
 
   // ---------- 音频元素 ----------
   useEffect(() => {
@@ -120,7 +153,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audioRef.current = audio
 
     const onTime = () => setCurrentTime(audio.currentTime || 0)
-    const onMeta = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+    const onMeta = (event: Event) => {
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+      const resume = resumeRef.current
+      const active = stateRef.current.queue[stateRef.current.index]
+      if (event.type === 'loadedmetadata' && audio.duration > 0 && active && resume.key === songKey(active) && resume.time > 0) {
+        audio.currentTime = Math.min(resume.time, Number.isFinite(audio.duration) ? Math.max(0, audio.duration - 0.1) : resume.time)
+        setCurrentTime(audio.currentTime)
+        resumeRef.current.time = 0
+      }
+    }
     const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
     const onWaiting = () => setLoading(true)
@@ -164,6 +206,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('error', onError)
       audio.removeEventListener('ended', onEnded)
       audioRef.current = null
+      void eqRef.current?.close()
+      eqRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -178,9 +222,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [volume, muted, updateSettings])
 
   // ---------- 持久化 ----------
+  const snapshotRef = useRef({ queue, index, repeat, shuffle, volume, position: currentTime })
+  snapshotRef.current = { queue, index, repeat, shuffle, volume, position: currentTime }
+  useEffect(() => { saveJson(PERSIST_KEY, snapshotRef.current) }, [queue, index, repeat, shuffle, volume])
   useEffect(() => {
-    saveJson(PERSIST_KEY, { queue, index, repeat, shuffle, volume })
-  }, [queue, index, repeat, shuffle, volume])
+    const save = () => saveJson(PERSIST_KEY, snapshotRef.current)
+    const timer = window.setInterval(save, 2000)
+    window.addEventListener('pagehide', save)
+    return () => { save(); clearInterval(timer); window.removeEventListener('pagehide', save) }
+  }, [])
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (sleepRef.current.until && Date.now() >= sleepRef.current.until) {
+        intentRef.current = false
+        tokenRef.current += 1
+        audioRef.current?.pause()
+        setLoading(false)
+        setSleep(null)
+      }
+    }, 500)
+    return () => clearInterval(timer)
+  }, [setSleep])
 
   // ---------- 核心：加载并播放 ----------
   useEffect(() => {
@@ -195,19 +257,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     const token = ++tokenRef.current
+    sourceDirtyRef.current = true
+    audio.pause()
     retriedRef.current = false
     setLoading(true)
     setError(null)
     setSourceName(null)
-    setCurrentTime(0)
+    setActualQuality(null)
+    setCurrentTime(resumeRef.current.key === songKey(song) ? resumeRef.current.time : 0)
     setDuration(0)
 
-    api
-      .musicUrl(song, stateRef.current.quality)
+    const cached = prefetched.current
+    const key = songKey(song) + ':' + stateRef.current.quality.join(',')
+    const resolved = cached?.key === key && cached.result && Date.now() - cached.at < 45000 ? Promise.resolve(cached.result) : api.musicUrl(song, stateRef.current.quality)
+    prefetched.current = null
+    resolved
       .then((result) => {
         if (token !== tokenRef.current) return
         setSourceName(result.sourceName)
+        setActualQuality(result.quality)
         audio.src = result.playUrl
+        sourceDirtyRef.current = false
+        void eqRef.current?.resume()
         return audio.play().then(() => {
           if (token === tokenRef.current) {
             setPlaying(true)
@@ -225,6 +296,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId])
+
+  useEffect(() => {
+    if (!playing || !duration || duration - currentTime > 25 || duration - currentTime <= 0 || shuffle || repeat === 'one' || stopAfterTrack || (sleepUntil && sleepUntil < Date.now() + 25000)) return
+    const next = nextTrackIndex(index, queue.length, playbackMode(repeat, shuffle), false)
+    if (next < 0 || next === index) return
+    const song = queue[next]
+    const key = songKey(song) + ':' + settings.quality.join(',')
+    if (prefetched.current?.key === key) return
+    const pending = { key, at: Date.now(), result: null as UrlResult | null }
+    prefetched.current = pending
+    void api.musicUrl(song, settings.quality).then(result => { if (prefetched.current === pending) pending.result = result }).catch(() => {})
+  }, [playing, duration, currentTime, queue, index, repeat, shuffle, settings.quality, sleepUntil, stopAfterTrack])
 
   // ---------- 歌词 ----------
   useEffect(() => {
@@ -276,8 +359,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ? [{ src: imageSrc(cover) ?? '', sizes: '500x500', type: 'image/jpeg' }]
         : undefined,
     })
-    navigator.mediaSession.setActionHandler('play', () => audioRef.current?.play().catch(() => undefined))
-    navigator.mediaSession.setActionHandler('pause', () => audioRef.current?.pause())
+    navigator.mediaSession.setActionHandler('play', () => mediaControls.current.play())
+    navigator.mediaSession.setActionHandler('pause', () => mediaControls.current.pause())
     navigator.mediaSession.setActionHandler('previoustrack', () => goPrev())
     navigator.mediaSession.setActionHandler('nexttrack', () => goNext(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,23 +380,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         return
       }
-      if (state.shuffle && state.queue.length > 1) {
-        let next = state.index
-        while (next === state.index) next = Math.floor(Math.random() * state.queue.length)
-        setIndex(next)
-        setRequestId((id) => id + 1)
+      const nextIndex = nextTrackIndex(state.index, state.queue.length, playbackMode(state.repeat, state.shuffle), manual)
+      if (nextIndex < 0) {
+        intentRef.current = false
+        audioRef.current?.pause()
+        setPlaying(false)
         return
       }
-      const nextIndex = state.index + 1
-      if (nextIndex >= state.queue.length) {
-        if (state.repeat === 'all' || manual) {
-          setIndex(0)
-          setRequestId((id) => id + 1)
-        } else {
-          audioRef.current?.pause()
-          setPlaying(false)
-        }
-        return
+      if (state.shuffle && state.queue[state.index]) {
+        shuffleHistory.current = [...shuffleHistory.current.slice(-99), songKey(state.queue[state.index])]
       }
       setIndex(nextIndex)
       setRequestId((id) => id + 1)
@@ -331,20 +406,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     if (state.shuffle && state.queue.length > 1) {
-      let next = state.index
-      while (next === state.index) next = Math.floor(Math.random() * state.queue.length)
+      let next = -1
+      while (shuffleHistory.current.length && next < 0) {
+        const key = shuffleHistory.current.pop()
+        next = state.queue.findIndex((song) => songKey(song) === key)
+      }
+      if (next < 0) next = nextTrackIndex(state.index, state.queue.length, 'shuffle', true)
       setIndex(next)
       setRequestId((id) => id + 1)
       return
     }
     const prevIndex = state.index - 1
-    setIndex(prevIndex < 0 ? state.queue.length - 1 : prevIndex)
+    setIndex(prevIndex < 0 ? (state.repeat === 'off' ? 0 : state.queue.length - 1) : prevIndex)
     setRequestId((id) => id + 1)
   }, [])
 
   const onEnded = useCallback(() => {
+    if (sleepRef.current.track) {
+      intentRef.current = false
+      audioRef.current?.pause()
+      setSleep(null)
+      return
+    }
     goNext(false)
-  }, [goNext])
+  }, [goNext, setSleep])
 
   goNextRef.current = goNext
 
@@ -371,7 +456,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         toast.error(text)
       }
       if (stateRef.current.queue.length > 1) {
-        window.setTimeout(() => goNextRef.current(true), 240)
+        const token = tokenRef.current
+        window.setTimeout(() => { if (token === tokenRef.current && intentRef.current) goNextRef.current(true) }, 240)
       }
     },
     [toast],
@@ -382,6 +468,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // ---------- 对外操作 ----------
   const playSongs = useCallback((songs: Song[], startIndex = 0) => {
     if (!songs.length) return
+    shuffleHistory.current = []
+    resumeRef.current.time = 0
     intentRef.current = true
     const safeIndex = Math.min(Math.max(0, startIndex), songs.length - 1)
     setQueue(songs)
@@ -401,29 +489,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playAt = useCallback((target: number) => {
     const state = stateRef.current
     if (target < 0 || target >= state.queue.length) return
+    resumeRef.current.time = 0
     intentRef.current = true
     setIndex(target)
     setRequestId((id) => id + 1)
   }, [])
 
   const togglePlay = useCallback(() => {
+    void eqRef.current?.resume()
     const audio = audioRef.current
     if (!audio) return
     if (!stateRef.current.queue.length) return
-    if (!audio.src) {
+    if (stateRef.current.loading && intentRef.current) {
+      tokenRef.current += 1; intentRef.current = false; audio.pause(); setLoading(false); return
+    }
+    if (!audio.src || sourceDirtyRef.current) {
       intentRef.current = true
       setRequestId((id) => id + 1)
       return
     }
-    if (audio.paused) void audio.play().catch(() => undefined)
-    else audio.pause()
+    if (audio.paused) { intentRef.current = true; void audio.play().catch(() => undefined) }
+    else { intentRef.current = false; audio.pause() }
   }, [])
+
+  mediaControls.current = {
+    play: () => { if (!intentRef.current) togglePlay() },
+    pause: () => { intentRef.current = false; tokenRef.current++; audioRef.current?.pause(); setLoading(false) },
+  }
 
   const seek = useCallback((time: number) => {
     const audio = audioRef.current
     if (!audio) return
     const target = Math.max(0, Math.min(time, audio.duration || time))
     audio.currentTime = target
+    const song = stateRef.current.queue[stateRef.current.index]
+    if ((!audio.src || sourceDirtyRef.current) && song) resumeRef.current = { key: songKey(song), time: target }
     setCurrentTime(target)
   }, [])
 
@@ -433,19 +533,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggleMute = useCallback(() => setMuted((prev) => !prev), [])
 
-  const cycleRepeat = useCallback(() => {
-    setRepeat((prev) => (prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off'))
+  const setPlaybackMode = useCallback((mode: PlaybackMode) => {
+    const next = playbackSettings(mode)
+    stateRef.current = { ...stateRef.current, ...next }
+    setShuffle(next.shuffle)
+    setRepeat(next.repeat)
+    shuffleHistory.current = []
   }, [])
 
-  const toggleShuffle = useCallback(() => setShuffle((prev) => !prev), [])
+  const cycleRepeat = useCallback(() => {
+    const state = stateRef.current
+    const next = nextPlaybackMode(playbackMode(state.repeat, state.shuffle))
+    setPlaybackMode(next)
+  }, [setPlaybackMode])
+
+  const toggleShuffle = useCallback(() => {
+    setShuffle((prev) => !prev)
+    setRepeat('all')
+    shuffleHistory.current = []
+  }, [])
 
   const setQuality = useCallback(
     (next: Quality) => {
+      if (current) resumeRef.current = { key: songKey(current), time: audioRef.current?.currentSrc ? audioRef.current.currentTime : currentTime }
+      if (current) {
+        sourceDirtyRef.current = true
+        tokenRef.current += 1
+      }
       const rest = settings.quality.filter((q) => q !== next)
       updateSettings({ quality: [next, ...rest] })
       if (current) setRequestId((id) => id + 1)
     },
-    [current, settings.quality, updateSettings],
+    [current, currentTime, settings.quality, updateSettings],
   )
 
   const addToQueue = useCallback(
@@ -466,18 +585,51 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   )
 
   const removeFromQueue = useCallback((target: number) => {
-    setQueue((prev) => {
-      if (target < 0 || target >= prev.length) return prev
-      return prev.filter((_, i) => i !== target)
-    })
-    setIndex((prev) => (target < prev ? prev - 1 : prev))
+    const state = stateRef.current
+    if (target < 0 || target >= state.queue.length) return
+    const nextQueue = state.queue.filter((_, i) => i !== target)
+    setQueue(nextQueue)
+    if (target !== state.index) {
+      setIndex(target < state.index ? state.index - 1 : state.index)
+      return
+    }
+
+    // The removed song's pending URL and audio must never outlive its queue entry.
+    const shouldResume = state.playing || (state.loading && intentRef.current)
+    tokenRef.current += 1
+    intentRef.current = nextQueue.length > 0 && shouldResume
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    setIndex(Math.min(target, Math.max(0, nextQueue.length - 1)))
+    setCurrentTime(0)
+    setDuration(0)
+    setPlaying(false)
+    setLoading(false)
+    setError(null)
+    setSourceName(null)
+    setRequestId(id => id + 1)
   }, [])
 
   const clearQueue = useCallback(() => {
-    audioRef.current?.pause()
+    tokenRef.current += 1
+    intentRef.current = false
+    shuffleHistory.current = []
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
     setQueue([])
     setIndex(0)
     setPlaying(false)
+    setLoading(false)
+    setError(null)
+    setSourceName(null)
     setCurrentTime(0)
     setDuration(0)
   }, [])
@@ -486,8 +638,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     clearQueue()
   }, [clearQueue])
 
+  const setEqualizer = useCallback((enabled: boolean, gains = eqGains) => {
+    try {
+      if (enabled && audioRef.current && !eqRef.current) eqRef.current = new BrowserEqualizer(audioRef.current)
+      eqRef.current?.apply(enabled, gains)
+      if (enabled) void eqRef.current?.resume()
+      setEqEnabled(enabled); setEqGains(gains); saveJson('equalizer.gains', gains)
+    } catch (error) { setEqEnabled(false); toast.error(error instanceof Error ? error.message : '此浏览器无法启用均衡器') }
+  }, [eqGains, toast])
+
   const value = useMemo<PlayerApi>(
     () => ({
+      actualQuality, eqEnabled, eqGains, setEqualizer,
+      sleepUntil, stopAfterTrack, setSleep, lyricOffset, setLyricOffset,
       queue,
       index,
       current,
@@ -513,6 +676,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       cycleRepeat,
+      setPlaybackMode,
       toggleShuffle,
       setQuality,
       playAt,
@@ -522,6 +686,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       stop,
     }),
     [
+      actualQuality, eqEnabled, eqGains, setEqualizer,
+      sleepUntil, stopAfterTrack, setSleep, lyricOffset, setLyricOffset,
       queue,
       index,
       current,
@@ -547,6 +713,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       toggleMute,
       cycleRepeat,
+      setPlaybackMode,
       toggleShuffle,
       setQuality,
       playAt,

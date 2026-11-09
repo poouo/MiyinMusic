@@ -30,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,7 +53,7 @@ fun PlaylistDetailScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(playlist.id) {
+    LaunchedEffect(playlist.id, localSongs) {
         loading = true
         runCatching {
             if (localSongs != null) PlaylistDetailResult(playlist, localSongs, localSongs.size)
@@ -109,6 +111,7 @@ fun PlaylistDetailScreen(
             }
         }
         item {
+            if (localSongs == null) SavePublicPlaylist(api, playlist.id)
             Button(
                 onClick = { if (songs.isNotEmpty()) onPlay(songs, 0) },
                 enabled = songs.isNotEmpty(),
@@ -245,7 +248,7 @@ fun ChartDetailScreen(
 }
 
 @Composable
-private fun DetailTopBar(onBack: () -> Unit) {
+private fun DetailTopBar(onBack: () -> Unit, title: String = "歌单详情") {
     Row(
         Modifier
             .fillMaxWidth()
@@ -256,10 +259,107 @@ private fun DetailTopBar(onBack: () -> Unit) {
             Icon(Icons.Rounded.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
         }
         Text(
-            "歌单详情",
+            title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground
         )
+    }
+}
+
+@Composable
+fun SingerDetailScreen(
+    api: ApiClient,
+    singer: SingerInfo,
+    favorites: Set<String>,
+    onBack: () -> Unit,
+    onPlay: (List<Song>, Int) -> Unit,
+    onFavorite: (Song) -> Unit
+) {
+    var detail by remember(singer.id) { mutableStateOf<SingerDetailResult?>(null) }
+    var loading by remember(singer.id) { mutableStateOf(true) }
+    var error by remember(singer.id) { mutableStateOf<String?>(null) }
+    var attempt by remember(singer.id) { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val actions = LocalLibraryActions.current
+    var moreBusy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(singer.id, attempt) {
+        loading = true
+        error = null
+        try {
+            detail = api.singer(singer.id, singer.name)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = e.userMessage("歌手加载失败，请重试")
+        } finally {
+            loading = false
+        }
+    }
+    val songs = detail?.songs.orEmpty()
+    val info = detail?.singer ?: singer
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
+        item { DetailTopBar(onBack, "歌手详情") }
+        item {
+            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                CoverImage(info.pic ?: singer.pic, api, Modifier.size(112.dp), corner = 56)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(info.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+                    Text("已加载 ${songs.size} 首 · " + (if (detail?.source == "catalog") "歌手作品" else "搜索到的歌曲"), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        }
+        item {
+            androidx.compose.material3.TextButton(enabled = !moreBusy, onClick = {
+                if (actions?.requireLogin() == true) {
+                    moreBusy = true
+                    scope.launch {
+                        try {
+                            val id = info.platform + "-" + info.id.removePrefix(info.platform + "-")
+                            val response = if (actions.library.favoriteSingers.any { it.id == id }) api.delete<LibraryResponse>("/api/library/singers/$id")
+                                else api.post<Map<String, SingerInfo>, LibraryResponse>("/api/library/singers", mapOf("singer" to info))
+                            actions.update(response.library)
+                        } catch (e: Exception) { actions.message(e.userMessage("关注操作失败")) }
+                        finally { moreBusy = false }
+                    }
+                }
+            }) { Text(if (actions?.library?.favoriteSingers?.any { it.id == info.id } == true) "取消关注" else "关注歌手") }
+            Button(onClick = { onPlay(songs, 0) }, enabled = songs.isNotEmpty(), modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("播放全部")
+            }
+        }
+        when {
+            loading -> item {
+                Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            }
+            error != null -> item {
+                Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    EmptyHint(error!!)
+                    Button(onClick = { attempt++ }) { Text("重试") }
+                }
+            }
+            songs.isEmpty() -> item { EmptyHint("暂时没有热门歌曲") }
+            else -> itemsIndexed(songs, key = { index, song -> song.key + "_" + index }) { index, song ->
+                SongRow(song = song, index = index, api = api, isFavorite = song.key in favorites,
+                    onPlay = { onPlay(songs, index) }, onFavorite = { onFavorite(song) })
+            }
+        }
+        if (detail?.hasMore == true) item {
+            androidx.compose.material3.TextButton(enabled = !moreBusy, onClick = {
+                moreBusy = true
+                scope.launch {
+                    try {
+                        val next = api.get<SingerDetailResult>("/api/singer/" + singer.id + "?name=" + java.net.URLEncoder.encode(singer.name, "UTF-8") + "&page=" + ((detail?.page ?: 1) + 1))
+                        detail = next.copy(songs = (songs + next.songs).distinctBy { it.key })
+                    } catch (e: Exception) { actions?.message(e.userMessage("加载失败，请重试")) }
+                    finally { moreBusy = false }
+                }
+            }) { Text(if (moreBusy) "加载中" else "加载更多作品") }
+        }
     }
 }

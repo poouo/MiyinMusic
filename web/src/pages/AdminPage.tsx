@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { AdminPlaylists } from '../components/AdminPlaylists'
+import { AdminFavorites } from '../components/AdminFavorites'
 import { formatCount, initials, timeAgo } from '../lib/format'
 import {
   AUDIENCE_NAMES,
@@ -34,6 +35,7 @@ import {
   DatabaseIcon,
   DownloadIcon,
   FileTextIcon,
+  HeartIcon,
   KeyIcon,
   LoaderIcon,
   LockIcon,
@@ -46,12 +48,13 @@ import {
   UsersIcon,
 } from '../components/Icons'
 
-type Section = 'playlists' | 'overview' | 'users' | 'sources' | 'site' | 'download' | 'cache' | 'audit'
+type Section = 'favorites' | 'playlists' | 'overview' | 'users' | 'sources' | 'site' | 'download' | 'cache' | 'audit'
 
 const SECTIONS: { id: Section; label: string; icon: typeof UsersIcon }[] = [
   { id: 'overview', label: '概览', icon: ActivityIcon },
   { id: 'users', label: '用户管理', icon: UsersIcon },
   { id: 'playlists', label: '歌单管理', icon: FileTextIcon },
+  { id: 'favorites', label: '用户收藏', icon: HeartIcon },
   { id: 'sources', label: '音源', icon: ServerIcon },
   { id: 'site', label: '站点设置', icon: LockIcon },
   { id: 'download', label: '下载权限', icon: DownloadIcon },
@@ -126,6 +129,7 @@ function AdminPanel() {
   const auth = useAuth()
   const [section, setSection] = useState<Section>('overview')
   const [playlistUser, setPlaylistUser] = useState<AdminUser | null>(null)
+  const [favoriteUser, setFavoriteUser] = useState<AdminUser | null>(null)
 
   return (
     <div className="fade-in admin">
@@ -162,8 +166,9 @@ function AdminPanel() {
 
         <div className="admin-body">
           {section === 'overview' ? <OverviewSection onJump={setSection} /> : null}
-          {section === 'users' ? <UsersSection onPlaylists={user => { setPlaylistUser(user); setSection('playlists') }} /> : null}
+          {section === 'users' ? <UsersSection onPlaylists={user => { setPlaylistUser(user); setSection('playlists') }} onFavorites={user => { setFavoriteUser(user); setSection('favorites') }} /> : null}
           {section === 'playlists' ? <AdminPlaylists initialUser={playlistUser} /> : null}
+          {section === 'favorites' ? <AdminFavorites initialUser={favoriteUser} /> : null}
           {section === 'sources' ? <SourcesSection /> : null}
           {section === 'site' ? <SiteSection /> : null}
           {section === 'download' ? <DownloadSection /> : null}
@@ -344,7 +349,7 @@ function OverviewSection({ onJump }: { onJump: (section: Section) => void }) {
   )
 }
 
-function UsersSection({ onPlaylists }: { onPlaylists: (user: AdminUser) => void }) {
+function UsersSection({ onPlaylists, onFavorites }: { onPlaylists: (user: AdminUser) => void; onFavorites: (user: AdminUser) => void }) {
   const toast = useToast()
   const auth = useAuth()
   const [list, setList] = useState<AdminUserList | null>(null)
@@ -505,7 +510,7 @@ function UsersSection({ onPlaylists }: { onPlaylists: (user: AdminUser) => void 
                         </span>
                       </td>
                       <td className="num"><button className="btn btn--sm btn--ghost" onClick={() => onPlaylists(user)} title="查看用户歌单">{user.playlists} · 查看</button></td>
-                      <td className="num">{user.favorites}</td>
+                      <td className="num"><button className="btn btn--sm btn--ghost" onClick={() => onFavorites(user)} title="查看用户收藏">{user.favorites} · 查看</button></td>
                       <td className="faint" style={{ fontSize: 12 }}>{user.lastLoginAt ? timeAgo(user.lastLoginAt) : '从未登录'}</td>
                       <td>
                         <div className="admin-actions">

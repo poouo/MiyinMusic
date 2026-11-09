@@ -84,7 +84,6 @@ export function QualityMenu({ value, onChange, available, placement = 'top', com
               </button>
             )
           })}
-          <div className="quality-popover__hint">实际音质取决于音源返回的结果，会自动降级。</div>
         </div>
       ) : null}
     </div>

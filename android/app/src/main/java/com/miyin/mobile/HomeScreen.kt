@@ -54,6 +54,7 @@ fun HomeScreen(
     onRetry: () -> Unit,
     onPlaylist: (PlaylistInfo) -> Unit,
     onChart: (ChartInfo) -> Unit,
+    onSinger: (SingerInfo) -> Unit,
     onAllCharts: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
     onFavorite: (Song) -> Unit,
@@ -140,7 +141,7 @@ fun HomeScreen(
                     .clip(RoundedCornerShape(26.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(Color(0xFF087B61), Color(0xFF126C87), Color(0xFF4B5AA8))
+                            listOf(Color(0xFF252525), Color(0xFF1C1C1C))
                         )
                     )
                     .clickable { data?.songs?.let { if (it.isNotEmpty()) onPlay(it, 0) } }
@@ -154,7 +155,7 @@ fun HomeScreen(
                         color = Color.White
                     )
                     Text(
-                        "为你精选，让好音乐陪伴今天",
+                        "从新歌开始，听见新的喜欢",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.78f),
                         modifier = Modifier.padding(top = 2.dp)
@@ -172,7 +173,7 @@ fun HomeScreen(
                     ) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("每日推荐", style = MaterialTheme.typography.labelMedium)
+                        Text("播放新歌", style = MaterialTheme.typography.labelMedium)
                     }
                 }
                 Icon(
@@ -196,6 +197,7 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
             }
         }
+        item { DiscoveryTools() }
 
         if (loading && data != null) {
             item {
@@ -305,7 +307,7 @@ fun HomeScreen(
                     itemsIndexed(singers, key = { _, s -> s.platform + "_" + s.id }) { _, singer ->
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(66.dp)
+                            modifier = Modifier.width(66.dp).clip(RoundedCornerShape(12.dp)).clickable { onSinger(singer) }
                         ) {
                             CoverImage(singer.pic, api, Modifier.size(62.dp), corner = 31)
                             Text(
