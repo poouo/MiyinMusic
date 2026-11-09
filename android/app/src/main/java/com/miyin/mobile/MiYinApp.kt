@@ -416,14 +416,15 @@ private fun BottomArea(
             song?.let { current ->
                 GlassPanel(
                     backdrop = backdrop,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenNowPlaying),
                     shape = RoundedCornerShape(22.dp),
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f)
                 ) {
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .clickable(onClick = onOpenNowPlaying)
                             .padding(10.dp)
                     ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

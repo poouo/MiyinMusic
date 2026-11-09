@@ -22,7 +22,12 @@ class PlaybackService : MediaSessionService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        mediaSession = MediaSession.Builder(this, player)
+        val sessionPlayer = MiYinSessionPlayer(
+            player = player,
+            onNext = { PlaybackBridge.next?.invoke() },
+            onPrevious = { PlaybackBridge.previous?.invoke() }
+        )
+        mediaSession = MediaSession.Builder(this, sessionPlayer)
             .setSessionActivity(sessionActivity)
             .build()
         // 即使 UI 没有创建 MediaController，也要把 session 注册到 Service，

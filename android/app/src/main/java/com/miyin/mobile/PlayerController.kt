@@ -93,6 +93,9 @@ class PlayerController(
 
     init {
         exoPlayer.addListener(playerListener)
+        PlaybackBridge.next = { next() }
+        PlaybackBridge.previous = { previous() }
+        PlaybackBridge.hasQueue = { queue.size > 1 }
 
         scope.launch {
             while (isActive) {
@@ -257,6 +260,9 @@ class PlayerController(
         loadJob?.cancel()
         scope.cancel()
         exoPlayer.removeListener(playerListener)
+        PlaybackBridge.next = null
+        PlaybackBridge.previous = null
+        PlaybackBridge.hasQueue = { false }
         // ExoPlayer 由 PlaybackService / PlaybackEngine 持有，Activity 重建时不停止播放。
     }
 
