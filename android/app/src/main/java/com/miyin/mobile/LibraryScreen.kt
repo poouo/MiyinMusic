@@ -1,5 +1,10 @@
 package com.miyin.mobile
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -148,10 +153,18 @@ fun LibraryScreen(
             LibraryTab("歌单", Icons.Rounded.QueueMusic, tab == 2, library.playlists.size) { tab = 2 }
         }
 
-        when (tab) {
-            0 -> SongList(api, favoriteSongs, favorites, onPlay, onFavorite, "还没有喜欢的歌曲，去发现好音乐吧")
-            1 -> SongList(api, historySongs, favorites, onPlay, onFavorite, "还没有播放记录")
-            else -> PlaylistList(library.playlists, onPlay)
+        AnimatedContent(
+            targetState = tab,
+            transitionSpec = {
+                fadeIn(tween(200)) togetherWith fadeOut(tween(140))
+            },
+            label = "library-tab"
+        ) { currentTab ->
+            when (currentTab) {
+                0 -> SongList(api, favoriteSongs, favorites, onPlay, onFavorite, "还没有喜欢的歌曲，去发现好音乐吧")
+                1 -> SongList(api, historySongs, favorites, onPlay, onFavorite, "还没有播放记录")
+                else -> PlaylistList(library.playlists, onPlay)
+            }
         }
     }
 }

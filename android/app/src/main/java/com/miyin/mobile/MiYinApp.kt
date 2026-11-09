@@ -3,6 +3,20 @@ package com.miyin.mobile
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -205,71 +220,93 @@ fun MiYinApp() {
                     .layerBackdrop(backdrop)
             ) {
                 AppBackground(api, player.current?.img, dark)
+                val screenKey = when {
+                    playlistDetail != null -> "playlist:" + playlistDetail!!.id
+                    chartDetail != null -> "chart:" + chartDetail!!.id
+                    else -> "tab:" + tab
+                }
                 Box(
                     Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
                         .padding(bottom = if (player.current != null) 230.dp else 150.dp)
                 ) {
-                    when {
-                        playlistDetail != null -> PlaylistDetailScreen(
-                            api = api,
-                            playlist = playlistDetail!!,
-                            favorites = favorites,
-                            onBack = { playlistDetail = null },
-                            onPlay = { songs, index -> playSongs(songs, index) },
-                            onFavorite = ::toggleFavorite
-                        )
-
-                        chartDetail != null -> ChartDetailScreen(
-                            api = api,
-                            chart = chartDetail!!,
-                            favorites = favorites,
-                            onBack = { chartDetail = null },
-                            onPlay = { songs, index -> playSongs(songs, index) },
-                            onFavorite = ::toggleFavorite
-                        )
-
-                        tab == 0 -> HomeScreen(
-                            api = api,
-                            data = homeData,
-                            loading = homeLoading,
-                            error = homeError,
-                            user = user,
-                            favorites = favorites,
-                            onFavorite = ::toggleFavorite,
-                            onRetry = ::reloadHome,
-                            onPlaylist = { playlistDetail = it },
-                            onChart = { chartDetail = it },
-                            onPlay = { songs, index -> playSongs(songs, index) },
-                            onSearch = { tab = 1 },
-                            onSettings = { showSettings = true },
-                            onLogin = { showLogin = true }
-                        )
-
-                        tab == 1 -> SearchScreen(
-                            api = api,
-                            favorites = favorites,
-                            onPlay = { songs, index -> playSongs(songs, index) },
-                            onFavorite = ::toggleFavorite
-                        )
-
-                        else -> LibraryScreen(
-                            api = api,
-                            library = library,
-                            user = user,
-                            favorites = favorites,
-                            onPlay = { songs, index -> playSongs(songs, index) },
-                            onFavorite = ::toggleFavorite,
-                            onLogin = { showLogin = true },
-                            onLogout = {
-                                scope.launch {
-                                    runCatching { api.logout() }
-                                    user = null
-                                    library = runCatching { api.library() }.getOrDefault(LibraryData())
-                                }
+                    AnimatedContent(
+                        targetState = screenKey,
+                        transitionSpec = {
+                            val enter = fadeIn(tween(230)) + slideInHorizontally(tween(280)) { width ->
+                                if (targetState.startsWith("tab:")) width / 10 else width / 5
                             }
-                        )
+                            val exit = fadeOut(tween(150)) + slideOutHorizontally(tween(210)) { width ->
+                                if (targetState.startsWith("tab:")) -width / 14 else -width / 7
+                            }
+                            enter togetherWith exit
+                        },
+                        label = "screen",
+                        modifier = Modifier.fillMaxSize()
+                    ) { _ ->
+                        val playlist = playlistDetail
+                        val chart = chartDetail
+                        when {
+                            playlist != null -> PlaylistDetailScreen(
+                                api = api,
+                                playlist = playlist,
+                                favorites = favorites,
+                                onBack = { playlistDetail = null },
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onFavorite = ::toggleFavorite
+                            )
+
+                            chart != null -> ChartDetailScreen(
+                                api = api,
+                                chart = chart,
+                                favorites = favorites,
+                                onBack = { chartDetail = null },
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onFavorite = ::toggleFavorite
+                            )
+
+                            tab == 0 -> HomeScreen(
+                                api = api,
+                                data = homeData,
+                                loading = homeLoading,
+                                error = homeError,
+                                user = user,
+                                favorites = favorites,
+                                onFavorite = ::toggleFavorite,
+                                onRetry = ::reloadHome,
+                                onPlaylist = { playlistDetail = it },
+                                onChart = { chartDetail = it },
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onSearch = { tab = 1 },
+                                onSettings = { showSettings = true },
+                                onLogin = { showLogin = true }
+                            )
+
+                            tab == 1 -> SearchScreen(
+                                api = api,
+                                favorites = favorites,
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onFavorite = ::toggleFavorite
+                            )
+
+                            else -> LibraryScreen(
+                                api = api,
+                                library = library,
+                                user = user,
+                                favorites = favorites,
+                                onPlay = { songs, index -> playSongs(songs, index) },
+                                onFavorite = ::toggleFavorite,
+                                onLogin = { showLogin = true },
+                                onLogout = {
+                                    scope.launch {
+                                        runCatching { api.logout() }
+                                        user = null
+                                        library = runCatching { api.library() }.getOrDefault(LibraryData())
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -289,7 +326,12 @@ fun MiYinApp() {
                 )
             }
 
-            if (showNowPlaying) {
+            AnimatedVisibility(
+                visible = showNowPlaying,
+                enter = fadeIn(tween(220)) + slideInVertically(tween(300)) { it },
+                exit = fadeOut(tween(160)) + slideOutVertically(tween(260)) { it },
+                modifier = Modifier.fillMaxSize()
+            ) {
                 NowPlayingScreen(
                     api = api,
                     player = player,
@@ -366,25 +408,30 @@ private fun BottomArea(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         val song = player.current
-        if (song != null) {
-            GlassPanel(
-                backdrop = backdrop,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f)
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenNowPlaying)
-                        .padding(10.dp)
+        AnimatedVisibility(
+            visible = song != null,
+            enter = fadeIn(tween(220)) + expandVertically(tween(280), expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(220), shrinkTowards = Alignment.Bottom)
+        ) {
+            song?.let { current ->
+                GlassPanel(
+                    backdrop = backdrop,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.28f)
                 ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onOpenNowPlaying)
+                            .padding(10.dp)
+                    ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CoverImage(song.img, api, Modifier.size(44.dp), corner = 12)
+                        CoverImage(current.img, api, Modifier.size(44.dp), corner = 12)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                song.name,
+                                current.name,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -392,7 +439,7 @@ private fun BottomArea(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                song.singer,
+                                current.singer,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelSmall,
@@ -432,6 +479,7 @@ private fun BottomArea(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                     )
+                    }
                 }
             }
         }
@@ -458,9 +506,25 @@ private fun BottomArea(
 
 @Composable
 private fun NavItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
+    val color by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(220),
+        label = "nav-color"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.10f else 1f,
+        animationSpec = tween(220),
+        label = "nav-scale"
+    )
+    val pill by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+        animationSpec = tween(220),
+        label = "nav-pill"
+    )
     Column(
         Modifier
             .clip(RoundedCornerShape(18.dp))
+            .background(pill)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -468,13 +532,18 @@ private fun NavItem(label: String, icon: androidx.compose.ui.graphics.vector.Ima
         Icon(
             icon,
             contentDescription = label,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp)
+            tint = color,
+            modifier = Modifier
+                .size(22.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
         )
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = color,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }

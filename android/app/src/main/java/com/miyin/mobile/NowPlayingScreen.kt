@@ -1,6 +1,9 @@
 package com.miyin.mobile
 
 import android.content.res.Configuration
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -357,6 +360,23 @@ private fun LyricsPane(
             ) {
                 itemsIndexed(player.lyrics) { index, line ->
                     val active = index == player.activeLyricIndex
+                    val lineColor by animateColorAsState(
+                        targetValue = if (active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
+                        animationSpec = tween(240),
+                        label = "lyric-color"
+                    )
+                    val lineSize by animateFloatAsState(
+                        targetValue = if (active) 19f else 14f,
+                        animationSpec = tween(240),
+                        label = "lyric-size"
+                    )
+                    val translationColor by animateColorAsState(
+                        targetValue = if (active) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                        animationSpec = tween(240),
+                        label = "translation-color"
+                    )
                     Column(
                         Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -364,18 +384,16 @@ private fun LyricsPane(
                         Text(
                             text = line.text,
                             style = MaterialTheme.typography.bodyLarge,
-                            fontSize = if (active) 19.sp else 14.sp,
+                            fontSize = lineSize.sp,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                            color = if (active) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
+                            color = lineColor,
                             textAlign = TextAlign.Center
                         )
                         if (line.translation.isNotBlank()) {
                             Text(
                                 text = line.translation,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (active) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
+                                color = translationColor,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
