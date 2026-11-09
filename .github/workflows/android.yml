@@ -42,8 +42,18 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleDebug --stacktrace --no-daemon 2>&1 | tee ../android-build.log
+
+      - name: Publish build log on failure
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add android-build.log
+          git commit -m "CI Android build log [skip ci]" || true
+          git push origin HEAD:ci-logs --force
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
