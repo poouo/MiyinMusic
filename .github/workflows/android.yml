@@ -41,7 +41,10 @@ jobs:
 
       - name: Download Gradle
         run: |
-          curl -fL --retry 3 -o /tmp/gradle-8.13-bin.zip "https://downloads.gradle.org/distributions/gradle-8.13-bin.zip"
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o /tmp/gradle-8.13-bin.zip "https://downloads.gradle.org/distributions/gradle-8.13-bin.zip" && break
+            sleep 5
+          done
           unzip -q /tmp/gradle-8.13-bin.zip -d /opt
           echo "/opt/gradle-8.13/bin" >> "$GITHUB_PATH"
 
