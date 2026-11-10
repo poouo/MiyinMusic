@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         splash.setOnExitAnimationListener { provider ->
-            provider.view.animate().alpha(0f).scaleX(1.04f).scaleY(1.04f).setDuration(220)
+            provider.view.animate().alpha(0f).setDuration(160)
                 .withEndAction { provider.remove() }.start()
         }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

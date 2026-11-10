@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">觅音</string>
+    <string name="startup_tagline">听见此刻，遇见喜欢</string>
+    <string name="startup_loading">正在准备你的音乐</string>
+    <string name="startup_wordmark">MIYIN MUSIC</string>
 </resources>

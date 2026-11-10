@@ -1,8 +1,14 @@
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:width="152dp" android:height="152dp" android:gravity="center">
-        <shape android:shape="oval">
-            <gradient android:startColor="#40DFA5" android:endColor="#007B69" android:angle="315" />
-        </shape>
-    </item>
-    <item android:width="220dp" android:height="220dp" android:gravity="center" android:drawable="@drawable/ic_launcher_foreground" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp" android:height="288dp"
+    android:viewportWidth="288" android:viewportHeight="288">
+    <!-- Transparent space keeps Android's fixed splash slot compact. -->
+    <group android:translateX="108" android:translateY="108">
+        <path android:fillColor="@color/splash_mark_background"
+            android:pathData="M23,0 H49 Q72,0 72,23 V49 Q72,72 49,72 H23 Q0,72 0,49 V23 Q0,0 23,0" />
+        <path android:fillColor="#00000000" android:strokeColor="@color/splash_mark_foreground"
+            android:strokeWidth="4.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+            android:pathData="M20,46 V30 C20,26 25,25 28,29 L34,38 Q36,41 38,38 L44,29 C47,25 52,26 52,30 V46" />
+        <path android:fillColor="@color/splash_mark_foreground"
+            android:pathData="M36,50 A2.5,2.5 0,1 1,36 55 A2.5,2.5 0,1 1,36 50" />
+    </group>
+</vector>

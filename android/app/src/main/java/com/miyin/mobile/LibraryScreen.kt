@@ -33,7 +33,6 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -79,8 +78,8 @@ fun LibraryScreen(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f).padding(start = 20.dp, top = 8.dp, bottom = 12.dp)
         )
-        IconButton(onClick = onSettings, modifier = Modifier.padding(end = 12.dp)) {
-            Icon(Icons.Rounded.Settings, "设置", tint = MaterialTheme.colorScheme.onBackground)
+        AppIconButton(onClick = onSettings, modifier = Modifier.padding(end = 20.dp)) {
+            Icon(Icons.Rounded.Settings, "设置", Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onBackground)
         }
         }
 
@@ -143,14 +142,13 @@ fun LibraryScreen(
                     Text("登录")
                 }
             } else {
-                Icon(
+                AppIconButton(onClick = onLogout) { Icon(
                     Icons.Rounded.Logout,
                     contentDescription = "退出登录",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
-                        .size(24.dp)
-                        .clickable(onClick = onLogout)
-                )
+                        .size(20.dp)
+                ) }
             }
         }
 
@@ -212,16 +210,10 @@ private fun LibraryTab(
     count: Int,
     onClick: () -> Unit
 ) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                else MaterialTheme.colorScheme.surface.copy(alpha = 0.35f)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
+    AppTextButton(
+        onClick = onClick,
+        selected = selected,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Icon(
             icon,

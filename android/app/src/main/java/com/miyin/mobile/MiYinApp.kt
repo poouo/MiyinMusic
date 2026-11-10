@@ -105,6 +105,7 @@ fun MiYinApp() {
     var library by remember { mutableStateOf(cachedSession.library) }
     var homeData by remember { mutableStateOf(if (prefs.showCachedHome) api.cache.home() else null) }
     var homeLoading by remember { mutableStateOf(true) }
+    var startupPending by rememberSaveable { mutableStateOf(homeData == null) }
     var homeError by remember { mutableStateOf<String?>(null) }
     var playlistDetail by remember { mutableStateOf<PlaylistInfo?>(null) }
     var chartDetail by remember { mutableStateOf<ChartInfo?>(null) }
@@ -220,6 +221,14 @@ fun MiYinApp() {
         prefs.themeMode = themeMode
     }
 
+    // Cached homes appear immediately; a first-run welcome never waits for a slow network.
+    LaunchedEffect(startupPending) {
+        if (startupPending) { delay(1600); startupPending = false }
+    }
+    LaunchedEffect(homeData, homeLoading) {
+        if (homeData != null || !homeLoading) startupPending = false
+    }
+
     // 播放页保持用户方向；暂停不改变歌词布局。
     LaunchedEffect(showNowPlaying) {
         val activity = context as? Activity
@@ -256,6 +265,7 @@ fun MiYinApp() {
         val wallpaperBackdrop = rememberLayerBackdrop()
         val favorites = library.favorites.map { it.song.key }.toSet()
 
+        CompositionLocalProvider(LocalControlBackdrop provides wallpaperBackdrop) {
         Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier
@@ -480,6 +490,13 @@ fun MiYinApp() {
                     Text(toast.orEmpty(), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            AnimatedVisibility(
+                visible = startupPending && tab == 0 && !showNowPlaying && !showSettings,
+                enter = androidx.compose.animation.EnterTransition.None,
+                exit = fadeOut(tween(200)),
+                modifier = Modifier.fillMaxSize().zIndex(10f)
+            ) { StartupScreen() }
+        }
         }
     }
 }

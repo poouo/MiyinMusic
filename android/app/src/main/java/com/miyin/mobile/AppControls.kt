@@ -3,6 +3,7 @@ package com.miyin.mobile
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
@@ -12,6 +13,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.*
@@ -122,22 +125,40 @@ fun AppDialog(onDismissRequest: () -> Unit, title: @Composable () -> Unit, text:
 
 @Composable
 fun AppClose(onClick: () -> Unit) {
-    Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = .06f))
-        .clickable(role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+    AppIconButton(onClick, Modifier.size(40.dp)) {
         Icon(Icons.Rounded.Close, "关闭", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
+fun AppIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) .94f else 1f,
+        spring(dampingRatio = .75f, stiffness = 650f), label = "glass-icon-press")
+    Box(modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .glassControlSurface(CircleShape, pressed = pressed).clip(CircleShape)
+        .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center, content = content)
+}
+
+@Composable
 fun AppButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    shape: Shape = RoundedCornerShape(16.dp), contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+    shape: Shape = RoundedCornerShape(50), contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
     colors: androidx.compose.material3.ButtonColors? = null,
     content: @Composable RowScope.() -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val background = colors?.containerColor ?: scheme.primary
-    Row(modifier.alpha(if (enabled) 1f else .45f).clip(shape)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed && enabled) .97f else 1f, spring(dampingRatio = .75f, stiffness = 650f), label = "button-press")
+    Row(modifier.alpha(if (enabled) 1f else .45f).graphicsLayer { scaleX = scale; scaleY = scale }.clip(shape)
         .background(Brush.linearGradient(listOf(background, background.copy(alpha = background.alpha * .82f))))
-        .clickable(enabled, role = Role.Button, onClick = onClick).defaultMinSize(minHeight = 44.dp).padding(contentPadding),
+        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = .15f), Color.Transparent)))
+        .border(.75.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = .38f), Color.White.copy(alpha = .08f))), shape)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+        .defaultMinSize(minHeight = 44.dp).padding(contentPadding),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         CompositionLocalProvider(LocalContentColor provides (colors?.contentColor ?: scheme.onPrimary)) {
             ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) { content() }
@@ -147,13 +168,19 @@ fun AppButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boole
 
 @Composable
 fun AppTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp), content: @Composable RowScope.() -> Unit) {
-    Row(modifier.alpha(if (enabled) 1f else .4f).clip(RoundedCornerShape(14.dp))
-        .background(MaterialTheme.colorScheme.primary.copy(alpha = .08f))
-        .clickable(enabled, role = Role.Button, onClick = onClick).defaultMinSize(minHeight = 44.dp).padding(contentPadding),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp), selected: Boolean = false,
+    content: @Composable RowScope.() -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed && enabled) .96f else 1f, spring(dampingRatio = .75f, stiffness = 650f), label = "glass-button-press")
+    val shape = RoundedCornerShape(50)
+    Row(modifier.alpha(if (enabled) 1f else .4f).graphicsLayer { scaleX = scale; scaleY = scale }
+        .glassControlSurface(shape, selected, pressed).clip(shape)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+        .defaultMinSize(minHeight = 44.dp).padding(contentPadding),
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
-            ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+        CompositionLocalProvider(LocalContentColor provides if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) {
+            ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)) { content() }
         }
     }
 }
@@ -191,11 +218,15 @@ fun AppField(value: String, onValueChange: (String) -> Unit, modifier: Modifier 
 }
 
 @Composable
-fun AppChoiceChip(selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(14.dp)) {
+fun AppChoiceChip(selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(50)) {
     val colors = MaterialTheme.colorScheme
-    Row(modifier.clip(shape).background(if (selected) colors.primary.copy(alpha = .13f) else colors.onSurface.copy(alpha = .04f))
-        .border(1.dp, if (selected) colors.primary.copy(alpha = .55f) else colors.outline.copy(alpha = .22f), shape)
-        .selectable(selected, role = Role.RadioButton, onClick = onClick).heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 9.dp),
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) .96f else 1f,
+        spring(dampingRatio = .75f, stiffness = 650f), label = "glass-choice-press")
+    Row(modifier.graphicsLayer { scaleX = scale; scaleY = scale }.glassControlSurface(shape, selected, pressed).clip(shape)
+        .selectable(selected, interactionSource = interaction, indication = null, role = Role.RadioButton, onClick = onClick)
+        .heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(14.dp), tint = colors.primary)
         CompositionLocalProvider(LocalContentColor provides if (selected) colors.primary else colors.onSurfaceVariant) {
