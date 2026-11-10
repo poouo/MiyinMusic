@@ -195,6 +195,7 @@ export function NowPlaying({ open, onClose }: Props) {
             ) : null}
             <QualityMenu
               value={player.quality}
+              actual={player.actualQuality}
               onChange={player.setQuality}
               available={current.qualities}
               placement="top"

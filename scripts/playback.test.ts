@@ -1,6 +1,38 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { nextPlaybackMode, nextTrackIndex, playbackMode, playbackSettings } from '../web/src/lib/playback.ts'
+import { PlaybackLoad } from '../web/src/lib/playbackLoad.ts'
+import { highestQuality } from '../web/src/lib/quality.ts'
+
+test('a media error and play rejection share one URL refresh and count only one final failure', () => {
+  const load = new PlaybackLoad()
+  const original = load.begin()
+  assert.equal(load.fail(original, true), 'retry')
+  assert.equal(load.fail(original, true), 'ignore')
+  const refreshed = load.begin()
+  assert.equal(load.fail(original, true), 'ignore')
+  assert.equal(load.fail(refreshed, true), 'failed')
+  assert.equal(load.fail(refreshed, true), 'ignore')
+})
+
+test('a manual resume gets a fresh retry budget and invalidates the old attempt', () => {
+  const load = new PlaybackLoad()
+  const blocked = load.begin()
+  assert.equal(load.fail(blocked, false), 'failed')
+  const resumed = load.begin(true)
+  assert.equal(load.fail(blocked, true), 'ignore')
+  assert.equal(load.fail(resumed, true), 'retry')
+  const refreshed = load.begin()
+  assert.equal(load.fail(refreshed, true), 'failed')
+})
+
+test('song quality badges use the highest advertised quality regardless of source ordering', () => {
+  assert.equal(highestQuality(['128k', 'flac', '320k']), 'flac')
+  assert.equal(highestQuality(['320k', 'flac24bit', 'flac']), 'flac24bit')
+  assert.equal(highestQuality(['128k']), '128k')
+  assert.equal(highestQuality([]), null)
+  assert.equal(highestQuality(), null)
+})
 
 test('mode control completes one four-state cycle without combining shuffle and single repeat', () => {
   let mode = nextPlaybackMode('off')

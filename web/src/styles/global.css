@@ -621,6 +621,17 @@ textarea.input {
 
 
 /* ---------- 音质菜单 ---------- */
+.custom-select { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; cursor: pointer; }
+.custom-select > svg { flex: none; color: var(--text-faint); transition: transform .18s var(--ease); }
+.custom-select[aria-expanded='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.custom-select__list { position: fixed; z-index: 2000; overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-elev); color: var(--text); box-shadow: 0 10px 32px rgba(0,0,0,.14); outline: none; animation: popIn .16s var(--ease); scrollbar-width: thin; }
+.custom-select__option { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 38px; padding: 8px 12px; border-radius: 9px; font-size: 13px; cursor: pointer; }
+.custom-select__option.is-focused { background: var(--bg-elev-2); }
+.custom-select__option.is-selected { color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+.custom-select__option.is-focused { outline: 1px solid var(--border); outline-offset: -1px; }
+.custom-select__option[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }
+.custom-select__option > svg { flex: none; }
+
 .quality-menu {
   position: relative;
   flex: none;
@@ -656,11 +667,15 @@ textarea.input {
   height: 26px;
   font-size: 12px;
 }
+.quality-pill__label {
+  color: var(--text-faint);
+  font-size: 10px;
+}
 .quality-popover {
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  width: 224px;
+  width: min(304px, calc(100vw - 24px));
   padding: 8px;
   border-radius: 18px;
   z-index: 60;
@@ -688,6 +703,23 @@ textarea.input {
   font-weight: 500;
   padding: 6px 12px 8px;
 }
+.quality-popover__summary {
+  margin: 4px 4px 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+}
+.quality-popover__summary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.quality-popover__summary > div + div { margin-top: 6px; }
+.quality-popover__summary strong { color: var(--text); font-weight: 600; }
+.quality-popover__summary p { margin: 8px 0 0; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
 .quality-option {
   display: flex;
   align-items: center;
@@ -709,9 +741,10 @@ textarea.input {
   background: var(--accent-soft);
   color: var(--accent);
 }
-.quality-option.is-disabled {
-  opacity: 0.6;
-}
+.quality-option.is-unlisted { color: var(--text-faint); }
+.quality-option:disabled { opacity: 0.5; cursor: not-allowed; }
+.quality-option.is-unlisted .quality-option__dot { background: transparent; border: 1px solid currentColor; }
+.quality-option.is-supported .quality-option__dot { opacity: 1; background: var(--accent); }
 .quality-option__dot {
   width: 6px;
   height: 6px;
@@ -725,10 +758,23 @@ textarea.input {
   box-shadow: none;
 }
 .quality-option__name {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   font-weight: 500;
 }
+.quality-option__status {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+.quality-option.is-supported .quality-option__status { color: var(--text-soft); }
+.quality-option__status.is-current { background: var(--accent-soft); color: var(--accent) !important; border-color: currentColor; }
+.quality-option__selected { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; white-space: nowrap; }
 .quality-option__desc {
   display: block;
   font-size: 12px;
@@ -1898,6 +1944,8 @@ button.quality-card:hover {
   position: relative;
   overflow: hidden;
 }
+.mini-player__controls { display: flex; align-items: center; gap: 2px; flex: none; }
+.mini-player__controls .icon-btn { width: 36px; height: 40px; }
 .mini-player__progress {
   position: absolute;
   left: 0;

@@ -128,7 +128,7 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
               <DownloadIcon size={16} />
             </button>
           ) : null}
-          <QualityMenu value={player.quality} onChange={player.setQuality} available={current.qualities} compact />
+          <QualityMenu value={player.quality} actual={player.actualQuality} onChange={player.setQuality} available={current.qualities} compact />
           <button className="icon-btn" title="播放队列" onClick={() => setQueueOpen(true)}>
             <ListMusicIcon size={17} />
           </button>

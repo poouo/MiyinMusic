@@ -6,8 +6,9 @@ import { useAuthModal } from '../state/authModal'
 import { useAppConfig } from '../state/appConfig'
 import { THEMES, useSettings } from '../state/settings'
 import { useToast } from '../state/toast'
-import { PLATFORM_NAMES, QUALITY_NAMES, ROLE_NAMES, type Quality } from '../lib/types'
+import { PLATFORMS, PLATFORM_NAMES, QUALITY_NAMES, ROLE_NAMES, type Quality } from '../lib/types'
 import { initials } from '../lib/format'
+import { Select } from '../components/Select'
 import { AlertIcon, CheckIcon, CrownIcon, LogOutIcon, ShieldIcon, SlidersIcon, UserIcon } from '../components/Icons'
 
 type Section = 'account' | 'playback' | 'appearance' | 'about'
@@ -284,18 +285,13 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                 <div className="grow">
                   <div className="setting-label">默认搜索平台</div>
                 </div>
-                <select
-                  className="input"
+                <Select
+                  aria-label="默认搜索平台"
                   style={{ width: 150, height: 38 }}
                   value={settings.defaultPlatform}
-                  onChange={(event) => update({ defaultPlatform: event.target.value as never })}
-                >
-                  {Object.entries(PLATFORM_NAMES).map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  options={PLATFORMS.map(id => ({ value: id, label: PLATFORM_NAMES[id] }))}
+                  onChange={defaultPlatform => update({ defaultPlatform })}
+                />
               </div>
             </div>
           ) : null}

@@ -18,6 +18,7 @@ import { useSettings } from './settings'
 import { useToast } from './toast'
 import { nextPlaybackMode, nextTrackIndex, playbackMode, playbackSettings, type PlaybackMode } from '../lib/playback'
 import { BrowserEqualizer } from '../lib/equalizer'
+import { PlaybackLoad } from '../lib/playbackLoad'
 import type { UrlResult } from '../lib/types'
 
 interface PersistedState {
@@ -129,12 +130,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const intentRef = useRef(false)
   const sourceDirtyRef = useRef(false)
   const tokenRef = useRef(0)
-  const retriedRef = useRef(false)
+  const audioFailureRef = useRef<(error: unknown) => void>(() => {})
+  const audioResumeRef = useRef<() => boolean>(() => false)
   const lyricCache = useRef(new Map<string, LyricResult | null>())
   // 连续失败计数：避免源失效时在整张列表里来回报错、刷屏卡死
   const failCountRef = useRef(0)
   const lastErrorRef = useRef({ text: '', at: 0 })
-  const goNextRef = useRef<(manual?: boolean) => void>(() => {})
+  const goNextRef = useRef<(manual?: boolean, preserveFailures?: boolean) => void>(() => {})
   const mediaControls = useRef({ play: () => {}, pause: () => {} })
   const shuffleHistory = useRef<string[]>([])
   const reportFailureRef = useRef<(song: Song | null, reason: string) => void>(() => {})
@@ -168,20 +170,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const onWaiting = () => setLoading(true)
     const onPlaying = () => {
       setLoading(false)
-      retriedRef.current = false
       failCountRef.current = 0
     }
     const onError = () => {
-      setLoading(false)
-      setPlaying(false)
-      const state = stateRef.current
-      if (!retriedRef.current && state.queue.length) {
-        retriedRef.current = true
-        // 播放地址可能过期，重新取一次
-        setRequestId((id) => id + 1)
-        return
-      }
-      reportFailureRef.current(state.queue[state.index] ?? null, '音源地址失效')
+      // Replacing a source may leave an old event queued; only handle a current MediaError.
+      if (!audio.error || sourceDirtyRef.current || !intentRef.current) return
+      const reasons: Record<number, string> = { 1: '音频加载已中断', 2: '音频传输失败', 3: '音频解码失败', 4: '音频地址失效或格式不受支持' }
+      audioFailureRef.current(new Error(reasons[audio.error.code] ?? '音频播放失败'))
     }
 
     audio.addEventListener('timeupdate', onTime)
@@ -259,7 +254,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const token = ++tokenRef.current
     sourceDirtyRef.current = true
     audio.pause()
-    retriedRef.current = false
     setLoading(true)
     setError(null)
     setSourceName(null)
@@ -267,33 +261,79 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setCurrentTime(resumeRef.current.key === songKey(song) ? resumeRef.current.time : 0)
     setDuration(0)
 
-    const cached = prefetched.current
-    const key = songKey(song) + ':' + stateRef.current.quality.join(',')
-    const resolved = cached?.key === key && cached.result && Date.now() - cached.at < 45000 ? Promise.resolve(cached.result) : api.musicUrl(song, stateRef.current.quality)
-    prefetched.current = null
-    resolved
-      .then((result) => {
-        if (token !== tokenRef.current) return
-        setSourceName(result.sourceName)
-        setActualQuality(result.quality)
-        audio.src = result.playUrl
-        sourceDirtyRef.current = false
-        void eqRef.current?.resume()
-        return audio.play().then(() => {
-          if (token === tokenRef.current) {
-            setPlaying(true)
-            library.recordPlay(song)
-          }
-        })
-      })
-      .catch((err: unknown) => {
-        if (token !== tokenRef.current) return
+    const load = new PlaybackLoad()
+    const qualities = stateRef.current.quality
+    const start = (refresh = false, reuseSource = false) => {
+      const attempt = load.begin(reuseSource)
+      if (!reuseSource) {
+        sourceDirtyRef.current = true
+        audio.pause()
+      }
+      setLoading(true)
+      const fail = (err: unknown, retryable: boolean) => {
+        if (token !== tokenRef.current || !intentRef.current) return
+        const name = err instanceof Error ? err.name : ''
+        const blocked = name === 'NotAllowedError'
+        const aborted = name === 'AbortError'
+        const action = load.fail(attempt, retryable && !blocked && !aborted)
+        if (action === 'ignore') return
+        if (blocked || aborted) {
+          intentRef.current = false
+          audio.pause()
+          setLoading(false)
+          setPlaying(false)
+          const message = blocked ? '浏览器阻止了自动播放，请点击播放继续' : '播放已中断，请点击播放重试'
+          setError(message)
+          toast.error(message)
+          return
+        }
+        sourceDirtyRef.current = true
+        if (action === 'retry') {
+          if (audio.currentTime > 0) resumeRef.current = { key: songKey(song), time: audio.currentTime }
+          // Keep the retry inside this load so refreshing the URL cannot reset its budget.
+          start(true)
+          return
+        }
         const message = err instanceof Error ? err.message : String(err)
         setError(message)
         setLoading(false)
         setPlaying(false)
         reportFailureRef.current(song, message)
+      }
+      const play = () => {
+        audioFailureRef.current = err => fail(err, true)
+        void eqRef.current?.resume()
+        void audio.play().then(() => {
+          if (token === tokenRef.current && load.isCurrent(attempt) && intentRef.current) {
+            setPlaying(true)
+            setLoading(false)
+            setError(null)
+            if (!reuseSource) library.recordPlay(song)
+          }
+        }).catch(err => fail(err, true))
+      }
+      if (reuseSource) { play(); return }
+      const cached = prefetched.current
+      const key = songKey(song) + ':' + qualities.join(',')
+      const resolved = !refresh && cached?.key === key && cached.result && Date.now() - cached.at < 45000 ? Promise.resolve(cached.result) : api.musicUrl(song, qualities)
+      prefetched.current = null
+      resolved
+      .then((result) => {
+        if (token !== tokenRef.current || !load.isCurrent(attempt) || !intentRef.current) return
+        setSourceName(result.sourceName)
+        setActualQuality(result.quality)
+        audio.src = result.playUrl
+        sourceDirtyRef.current = false
+        play()
       })
+      .catch(err => fail(err, false))
+    }
+    audioResumeRef.current = () => {
+      if (token !== tokenRef.current || sourceDirtyRef.current || !audio.src || audio.error) return false
+      start(false, true)
+      return true
+    }
+    start()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId])
 
@@ -368,18 +408,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // ---------- 导航 ----------
   const goNext = useCallback(
-    (manual = false) => {
+    (manual = false, preserveFailures = false) => {
       const state = stateRef.current
       if (!state.queue.length) return
+      if (manual && !preserveFailures) { failCountRef.current = 0; lastErrorRef.current = { text: '', at: 0 } }
       intentRef.current = true
       if (state.repeat === 'one' && !manual) {
         const audio = audioRef.current
         if (audio) {
           audio.currentTime = 0
-          void audio.play().catch(() => undefined)
+          if (!audioResumeRef.current()) setRequestId(id => id + 1)
         }
         return
       }
+      tokenRef.current += 1
       const nextIndex = nextTrackIndex(state.index, state.queue.length, playbackMode(state.repeat, state.shuffle), manual)
       if (nextIndex < 0) {
         intentRef.current = false
@@ -400,11 +442,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const state = stateRef.current
     const audio = audioRef.current
     if (!state.queue.length) return
+    failCountRef.current = 0
+    lastErrorRef.current = { text: '', at: 0 }
     intentRef.current = true
     if (audio && audio.currentTime > 3) {
       audio.currentTime = 0
       return
     }
+    tokenRef.current += 1
     if (state.shuffle && state.queue.length > 1) {
       let next = -1
       while (shuffleHistory.current.length && next < 0) {
@@ -450,14 +495,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const text = '《' + (song?.name ?? '这首歌') + '》暂时无法播放，已自动跳过'
+      const hasNext = stateRef.current.queue.length > 1
+      const text = '《' + (song?.name ?? '这首歌') + '》' + reason + (hasNext ? '，已自动跳过' : '，请点击播放重试')
       if (lastErrorRef.current.text !== text || now - lastErrorRef.current.at > 2500) {
         lastErrorRef.current = { text, at: now }
         toast.error(text)
       }
-      if (stateRef.current.queue.length > 1) {
+      if (hasNext) {
         const token = tokenRef.current
-        window.setTimeout(() => { if (token === tokenRef.current && intentRef.current) goNextRef.current(true) }, 240)
+        window.setTimeout(() => {
+          if (token !== tokenRef.current || !intentRef.current) return
+          // Advance past the failed song even in single-repeat mode without resetting the failure count.
+          goNextRef.current(true, true)
+        }, 240)
+      } else {
+        intentRef.current = false
       }
     },
     [toast],
@@ -468,6 +520,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // ---------- 对外操作 ----------
   const playSongs = useCallback((songs: Song[], startIndex = 0) => {
     if (!songs.length) return
+    tokenRef.current += 1
+    failCountRef.current = 0
+    lastErrorRef.current = { text: '', at: 0 }
     shuffleHistory.current = []
     resumeRef.current.time = 0
     intentRef.current = true
@@ -489,6 +544,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playAt = useCallback((target: number) => {
     const state = stateRef.current
     if (target < 0 || target >= state.queue.length) return
+    tokenRef.current += 1
+    failCountRef.current = 0
+    lastErrorRef.current = { text: '', at: 0 }
     resumeRef.current.time = 0
     intentRef.current = true
     setIndex(target)
@@ -503,12 +561,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (stateRef.current.loading && intentRef.current) {
       tokenRef.current += 1; intentRef.current = false; audio.pause(); setLoading(false); return
     }
-    if (!audio.src || sourceDirtyRef.current) {
+    failCountRef.current = 0
+    lastErrorRef.current = { text: '', at: 0 }
+    setError(null)
+    if (!audio.src || sourceDirtyRef.current || audio.error) {
       intentRef.current = true
       setRequestId((id) => id + 1)
       return
     }
-    if (audio.paused) { intentRef.current = true; void audio.play().catch(() => undefined) }
+    if (audio.paused) {
+      intentRef.current = true
+      if (!audioResumeRef.current()) {
+        const active = stateRef.current.queue[stateRef.current.index]
+        if (active) resumeRef.current = { key: songKey(active), time: audio.currentTime }
+        setRequestId(id => id + 1)
+      }
+    }
     else { intentRef.current = false; audio.pause() }
   }, [])
 
@@ -611,6 +679,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setLoading(false)
     setError(null)
     setSourceName(null)
+    setActualQuality(null)
     setRequestId(id => id + 1)
   }, [])
 
@@ -630,6 +699,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setLoading(false)
     setError(null)
     setSourceName(null)
+    setActualQuality(null)
     setCurrentTime(0)
     setDuration(0)
   }, [])

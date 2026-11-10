@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { AdminPlaylists } from '../components/AdminPlaylists'
+import { Select } from '../components/Select'
 import { AdminFavorites } from '../components/AdminFavorites'
 import { MembershipSettings } from '../components/MembershipSettings'
 import { formatCount, initials, timeAgo } from '../lib/format'
@@ -428,17 +429,10 @@ function UsersSection({ onPlaylists, onFavorites }: { onPlaylists: (user: AdminU
           <SearchIcon size={16} />
           <input value={q} onChange={(event) => { setQ(event.target.value); setPage(1) }} placeholder="搜索用户名或昵称" />
         </div>
-        <select className="input admin-select" value={role} onChange={(event) => { setRole(event.target.value); setPage(1) }}>
-          <option value="">全部角色</option>
-          <option value="admin">管理员</option>
-          <option value="vip">会员</option>
-          <option value="user">普通用户</option>
-        </select>
-        <select className="input admin-select" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}>
-          <option value="">全部状态</option>
-          <option value="active">正常</option>
-          <option value="disabled">已停用</option>
-        </select>
+        <Select className="admin-select" aria-label="筛选用户角色" value={role} onChange={value => { setRole(value); setPage(1) }}
+          options={[{ value: '', label: '全部角色' }, { value: 'admin', label: '管理员' }, { value: 'vip', label: '会员' }, { value: 'user', label: '普通用户' }]} />
+        <Select className="admin-select" aria-label="筛选用户状态" value={status} onChange={value => { setStatus(value); setPage(1) }}
+          options={[{ value: '', label: '全部状态' }, { value: 'active', label: '正常' }, { value: 'disabled', label: '已停用' }]} />
         <button className="btn btn--sm btn--ghost" onClick={() => void load()} disabled={loading}>
           <RefreshIcon size={14} /> 刷新
         </button>

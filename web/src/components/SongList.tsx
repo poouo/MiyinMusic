@@ -3,18 +3,17 @@ import { navigate } from '../lib/router'
 import { usePlayer } from '../state/player'
 import { useDownload } from '../lib/useDownload'
 import { formatDuration } from '../lib/format'
-import { PLATFORM_NAMES, songKey } from '../lib/types'
+import { PLATFORM_NAMES, QUALITY_NAMES, songKey } from '../lib/types'
+import { highestQuality } from '../lib/quality'
 import type { Quality, Song } from '../lib/types'
 import { Cover } from './Cover'
 import { DownloadIcon, HeartIcon, ListPlusIcon, PauseIcon, PlayIcon, TrashIcon } from './Icons'
 
 export function QualityTag({ qualities }: { qualities?: Quality[] }) {
-  const best = qualities?.[0]
+  const best = highestQuality(qualities)
   if (!best) return null
-  if (best === 'flac24bit') return <span className="tag tag--sq">Hi-Res</span>
-  if (best === 'flac') return <span className="tag tag--sq">SQ</span>
-  if (best === '320k') return <span className="tag tag--hq">HQ</span>
-  return null
+  const label = best === 'flac24bit' ? 'Hi-Res' : best === 'flac' ? 'SQ' : best === '320k' ? 'HQ' : '标准'
+  return <span className={'tag ' + (best.startsWith('flac') ? 'tag--sq' : 'tag--hq')} title={'平台标注音质：' + QUALITY_NAMES[best]}>{label}</span>
 }
 
 interface SongListProps {

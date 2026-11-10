@@ -15,6 +15,7 @@
     "build": "npm --workspace web run build && npm --workspace server run build",
     "start": "node server/dist/index.js",
     "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck",
+    "test:web": "tsx --test scripts/playback.test.ts",
     "smoke": "node scripts/smoke.mjs"
   },
   "engines": {
