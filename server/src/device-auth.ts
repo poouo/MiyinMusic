@@ -130,6 +130,13 @@ export function authenticate(req: IncomingMessage): DeviceIdentity {
   return identityFor(row)
 }
 
+/** Internal bridge credentials go through the same live authorization as HTTP requests. */
+export function authenticateToken(token: string): DeviceIdentity {
+  const row = /^myk_[A-Za-z0-9_-]{43}$/.test(token)
+    ? getDb().prepare('SELECT * FROM device_api_keys WHERE token_hash = ?').get(hash(token)) as unknown as KeyRow | undefined : undefined
+  return identityFor(row)
+}
+
 export function refresh(identity: DeviceIdentity): DeviceIdentity {
   return identityFor(getDb().prepare('SELECT * FROM device_api_keys WHERE id = ?').get(identity.key.id) as unknown as KeyRow | undefined)
 }

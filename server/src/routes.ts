@@ -56,6 +56,7 @@ import { fullPlaylist, resolvePlaylistLink } from './playlist-import.js'
 import { recommendations } from './recommendations.js'
 import * as devices from './device-auth.js'
 import { handleDeviceApi } from './device-api.js'
+import { xiaozhiStatus, saveXiaozhi, removeXiaozhi, stopXiaozhiForKey } from './xiaozhi.js'
 import { resolveAudio } from './media-resolver.js'
 
 const log = logger('api')
@@ -225,6 +226,15 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   }
 
   // Browser session management of device credentials (keys themselves cannot access this).
+  if (pathname === '/api/device-api/xiaozhi') {
+    const user = requireUser(req)
+    res.setHeader('Cache-Control', 'no-store')
+    if (method === 'GET') sendJson(res, 200, xiaozhiStatus(user))
+    else if (method === 'PUT') sendJson(res, 200, saveXiaozhi(user, await readJson(req, 16 * 1024)))
+    else if (method === 'DELETE') sendJson(res, 200, removeXiaozhi(user))
+    else { res.setHeader('Allow', 'GET, PUT, DELETE'); sendError(res, 405, '不支持的操作') }
+    return true
+  }
   if (pathname === '/api/device-api' && method === 'GET') {
     const user = requireUser(req)
     sendJson(res, 200, { access: devices.access(user), keys: devices.listKeys(user.id) })
@@ -238,7 +248,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   const deviceKey = /^\/api\/device-api\/keys\/([^/]+)$/.exec(pathname)
   if (deviceKey && method === 'DELETE') {
     const user = requireUser(req)
-    devices.revokeKey(user.id, decodeURIComponent(deviceKey[1]), user)
+    const id = decodeURIComponent(deviceKey[1])
+    stopXiaozhiForKey(user.id, id)
+    devices.revokeKey(user.id, id, user)
     sendJson(res, 200, { ok: true }); return true
   }
   if (deviceKey && method === 'PATCH') {
@@ -379,7 +391,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         sendJson(res, 200, { access: devices.setAccess(user, body.mode, actor), keys: devices.listKeys(user.id) }); return true
       }
       if (method === 'DELETE' && deviceUser[2]) {
-        devices.revokeKey(user.id, decodeURIComponent(deviceUser[2]), actor)
+        const id = decodeURIComponent(deviceUser[2])
+        stopXiaozhiForKey(user.id, id)
+        devices.revokeKey(user.id, id, actor)
         sendJson(res, 200, { ok: true }); return true
       }
     }

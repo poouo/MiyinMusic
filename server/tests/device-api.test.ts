@@ -24,6 +24,7 @@ const library = await import('../src/library.js')
 const membership = await import('../src/membership.js')
 const { sessionCache } = await import('../src/session-cache.js')
 const { XiaozhiMcpBridge } = await import('../src/xiaozhi-bridge.js')
+const xiaozhi = await import('../src/xiaozhi.js')
 let server: http.Server, base: string, admin: User, user: User, other: User
 let adminToken: string, userToken: string, otherToken: string
 let supported: Quality[], resolved: Quality[][], sourceCalls: Song[], onResolve: () => Promise<void>
@@ -83,7 +84,7 @@ beforeEach(() => {
     return nativeFetch(input, init)
   })
 })
-afterEach(() => mock.restoreAll())
+afterEach(() => { xiaozhi.stopXiaozhiConnections(); mock.restoreAll() })
 after(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()))
   closeDb()
@@ -348,6 +349,28 @@ test('MCP identities stay isolated across clients and revoked credentials stop s
   } finally { await Promise.all([a.close(), b.close()]) }
 })
 
+test('voice download tool searches and signs one link, enforces quota and is absent without both scopes', async () => {
+  const created = await key(['search', 'download']), playbackOnly = await key(['search', 'playback'])
+  updateAppConfig({ membership: { audiences: { user: { dailyDownloads: 1 } } } })
+  const client = await mcpClient(created.token), listener = await mcpClient(playbackOnly.token)
+  try {
+    const list = await client.listTools()
+    const download = list.tools.find(tool => tool.name === 'miyin_find_download_url')!
+    assert.ok(download)
+    assert.equal(download.annotations?.readOnlyHint, false); assert.equal(download.annotations?.idempotentHint, false)
+    assert.ok(!(await listener.listTools()).tools.some(tool => tool.name === 'miyin_find_download_url'))
+    const result = await client.callTool({ name: download.name, arguments: { query: '测试歌手 测试歌曲', quality: '128k' } })
+    assert.equal(result.isError, undefined)
+    const data = JSON.parse((result.content as { text: string }[])[0].text)
+    assert.equal(data.url, 'https://93.184.216.34/audio/128k'); assert.ok(data.filename.endsWith('.mp3'))
+    assert.equal(data.downloadStarted, false)
+    assert.equal(membership.usage('u:' + user.id).day.downloads, 1)
+    const blocked = await client.callTool({ name: download.name, arguments: { query: '测试歌曲', quality: '128k' } })
+    assert.equal(blocked.isError, true)
+    assert.equal(membership.usage('u:' + user.id).day.downloads, 1)
+  } finally { await Promise.all([client.close(), listener.close()]) }
+})
+
 test('Xiaozhi WebSocket bridge forwards initialize, tools and direct-link results, reconnects and never logs tokens', async () => {
   const created = await key(['search', 'playback'])
   const endpoint = new WebSocketServer({ port: 0, host: '127.0.0.1' })
@@ -382,6 +405,101 @@ test('Xiaozhi WebSocket bridge forwards initialize, tools and direct-link result
     assert.ok(!messages.join('\n').includes(created.token)); assert.ok(!messages.join('\n').includes('private-xiaozhi-token'))
   } finally {
     bridge.stop()
+    for (const socket of endpoint.clients) socket.terminate()
+    await new Promise<void>(resolve => endpoint.close(() => resolve()))
+  }
+})
+
+test('browser Xiaozhi setup validates official endpoints, session ownership and permissions', async () => {
+  const path = '/api/device-api/xiaozhi'
+  const endpoint = 'wss://api.xiaozhi.me/mcp/?token=browser-owned-token'
+  assert.equal((await request(path)).status, 401)
+  const created = await key()
+  assert.equal((await request(path, 'GET', undefined, created.token)).status, 401)
+  for (const invalid of ['http://api.xiaozhi.me/mcp/?token=a', 'ws://127.0.0.1/mcp/?token=a',
+    'wss://api.xiaozhi.me.attacker.test/mcp/?token=a', 'wss://evilxiaozhi.me/mcp/?token=a',
+    'wss://api.xiaozhi.me:444/mcp/?token=a', 'wss://user:pass@api.xiaozhi.me/mcp/?token=a',
+    'wss://api.xiaozhi.me/mcp/', 'wss://api.xiaozhi.me/other?token=a']) {
+    assert.equal((await request(path, 'PUT', { endpoint: invalid, enabled: true }, userToken)).status, 400)
+  }
+  assert.equal((await request(path, 'PUT', { endpoint, enabled: true, scopes: ['admin'] }, userToken)).status, 400)
+  assert.equal((await request(path, 'PUT', { endpoint, enabled: true, scopes: [] }, userToken)).status, 400)
+  updateAppConfig({ deviceApi: { enabled: false } })
+  assert.equal((await request(path, 'PUT', { endpoint, enabled: true }, userToken)).status, 403)
+  assert.equal(getDb().prepare('SELECT COUNT(*) AS n FROM xiaozhi_mcp_connections').get()!.n, 0)
+})
+
+test('browser Xiaozhi configuration encrypts credentials, isolates accounts and restores without duplicating keys', async () => {
+  const path = '/api/device-api/xiaozhi', endpoint = 'wss://api.xiaozhi.me/mcp/?token=persisted-private-token'
+  const starts: string[] = []
+  mock.method(XiaozhiMcpBridge.prototype, 'start', function (this: XiaozhiMcpBridge) {
+    const options = (this as unknown as { options: import('../src/xiaozhi-bridge.js').XiaozhiBridgeOptions }).options
+    starts.push(options.endpoint); options.onState?.('connected', Date.now())
+  })
+  xiaozhi.startXiaozhiConnections(base + '/api/v1/mcp')
+  const saved = await json(await request(path, 'PUT', { endpoint, enabled: true }, userToken))
+  assert.equal(saved.state, 'connected'); assert.deepEqual(saved.scopes, ['search', 'playback'])
+  assert.ok(saved.connectedAt)
+  assert.ok(!JSON.stringify(saved).includes('persisted-private-token'))
+  assert.ok(!JSON.stringify(saved).includes('myk_'))
+  const row = getDb().prepare('SELECT * FROM xiaozhi_mcp_connections WHERE user_id = ?').get(user.id)!
+  assert.ok(!JSON.stringify(row).includes('persisted-private-token')); assert.ok(!String(row.secret).includes('myk_'))
+  assert.equal((await json(await request(path, 'GET', undefined, otherToken))).configured, false)
+  assert.equal((await request(path, 'PUT', { endpoint: endpoint + '&another=value', enabled: true }, otherToken)).status, 409)
+  xiaozhi.stopXiaozhiConnections()
+  xiaozhi.startXiaozhiConnections(base + '/api/v1/mcp')
+  assert.equal(starts.length, 2); assert.equal(starts[1], endpoint)
+  assert.equal((await json(await request('/api/device-api', 'GET', undefined, userToken))).keys.length, 1)
+  await request(path, 'PUT', { enabled: true, scopes: ['library'] }, userToken)
+  assert.deepEqual((await json(await request(path, 'GET', undefined, userToken))).scopes, ['library'])
+  updateAppConfig({ deviceApi: { enabled: false } })
+  assert.equal((await json(await request(path, 'GET', undefined, userToken))).state, 'blocked')
+  assert.equal((await request(path, 'PUT', { enabled: false }, userToken)).status, 200)
+  xiaozhi.stopXiaozhiConnections(); xiaozhi.startXiaozhiConnections(base + '/api/v1/mcp')
+  assert.equal((await json(await request(path, 'GET', undefined, userToken))).state, 'disabled')
+  assert.equal((await request(path, 'DELETE', undefined, otherToken)).status, 200)
+  assert.equal(getDb().prepare('SELECT COUNT(*) AS n FROM xiaozhi_mcp_connections').get()!.n, 1)
+  assert.equal((await request(path, 'DELETE', undefined, userToken)).status, 200)
+  assert.equal((await json(await request('/api/device-api', 'GET', undefined, userToken))).keys.length, 0)
+})
+
+test('settings-managed Xiaozhi bridge serves scoped music tools and closes after key revocation', async () => {
+  const endpoint = new WebSocketServer({ port: 0, host: '127.0.0.1' })
+  await new Promise<void>(resolve => endpoint.once('listening', resolve))
+  const localEndpoint = 'ws://127.0.0.1:' + (endpoint.address() as import('node:net').AddressInfo).port
+  const originalStart = XiaozhiMcpBridge.prototype.start
+  // Redirect the already-validated official connection to a local protocol fixture only in this test.
+  mock.method(XiaozhiMcpBridge.prototype, 'start', function (this: XiaozhiMcpBridge) {
+    const options = (this as unknown as { options: import('../src/xiaozhi-bridge.js').XiaozhiBridgeOptions }).options
+    options.endpoint = localEndpoint; originalStart.call(this)
+  })
+  xiaozhi.startXiaozhiConnections(base + '/api/v1/mcp')
+  try {
+    const connected = new Promise<WebSocket>(resolve => endpoint.once('connection', resolve))
+    const saved = await json(await request('/api/device-api/xiaozhi', 'PUT', {
+      enabled: true, endpoint: 'wss://api.xiaozhi.me/mcp/?token=integration-token', scopes: ['search', 'playback'],
+    }, userToken))
+    const socket = await connected
+    const rpc = async (id: number, method: string, params?: unknown) => {
+      const result = new Promise<any>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('managed MCP timed out')), 5000)
+        socket.once('message', data => { clearTimeout(timer); resolve(JSON.parse(data.toString())) })
+      })
+      socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params })); return result
+    }
+    assert.equal((await rpc(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'xiaozhi', version: '1' } })).result.protocolVersion, '2024-11-05')
+    socket.send(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }))
+    const list = await rpc(2, 'tools/list')
+    assert.ok(list.result.tools.some((tool: any) => tool.name === 'miyin_find_playback_url'))
+    assert.ok(!list.result.tools.some((tool: any) => tool.name === 'miyin_get_download_url'))
+    const result = await rpc(3, 'tools/call', { name: 'miyin_find_playback_url', arguments: { query: '测试歌曲', quality: '128k' } })
+    assert.equal(JSON.parse(result.result.content[0].text).url, 'https://93.184.216.34/audio/128k')
+    const closed = new Promise<void>(resolve => socket.once('close', () => resolve()))
+    await request('/api/device-api/keys/' + saved.keyId, 'DELETE', undefined, userToken)
+    assert.equal((await json(await request('/api/device-api/xiaozhi', 'GET', undefined, userToken))).configured, false)
+    await closed
+  } finally {
+    xiaozhi.stopXiaozhiConnections()
     for (const socket of endpoint.clients) socket.terminate()
     await new Promise<void>(resolve => endpoint.close(() => resolve()))
   }

@@ -4,6 +4,7 @@ import { ROLE_NAMES, type DeviceAccess, type DeviceApiConfig, type DeviceApiStat
 import { useToast } from '../state/toast'
 import { Select } from './Select'
 import { Modal } from './Modal'
+import { XiaozhiSettings } from './XiaozhiSettings'
 import { KeyIcon, PlusIcon, RefreshIcon, TrashIcon } from './Icons'
 import '../styles/device-api.css'
 
@@ -52,11 +53,11 @@ Content-Type: application/json
       </tbody></table></div>
       <a className="btn btn--sm" href="/api/v1/openapi.json" target="_blank" rel="noreferrer">打开完整 OpenAPI 3.0 文档</a>
       <p className="setting-desc">音质：128k / 320k / flac / flac24bit。错误为 error.code 和 error.message；401 表示密钥无效，403 表示未获授权或权限不足，429 表示频率或次数超限，502 表示所选音质不可用或音源失败。429 响应带 Retry-After。下载成功返回直链时扣次数，实际流量不经过本站；有流量额度的账号不开放直链下载。</p>
-      <h3 style={{ fontSize: 15 }}>MCP 与小智 AI</h3>
+      <h3 style={{ fontSize: 15 }}>通用 HTTP MCP</h3>
       <p className="dim">支持 Streamable HTTP MCP，使用同一个设备密钥；工具按密钥权限显示。HTTP MCP 地址：</p>
       <code style={{ overflowWrap: 'anywhere' }}>{window.location.origin}/api/v1/mcp</code>
       <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12, lineHeight: 1.7 }}>{JSON.stringify({ mcpServers: { miyin: { type: 'http', url: window.location.origin + '/api/v1/mcp', headers: { Authorization: 'Bearer myk_你的设备密钥' } } } }, null, 2)}</pre>
-      <p className="dim">小智后台给出 wss://… MCP 接入点时，使用随项目提供的桥接程序或 Docker 桥接容器。它会自动重连，只转发 MCP 工具消息，音频仍由设备直连音源。</p>
+      <p className="dim">小智 AI 请在上方「小智 AI」中粘贴控制台提供的 wss:// 接入点，由本站服务端主动连接；无需额外部署桥接容器。上面的 HTTP 配置用于支持 Streamable HTTP 的其他 MCP 客户端。</p>
       <p className="setting-desc">可以调用搜歌、按歌名获取播放直链、下载直链、歌词和自己的歌单。MCP 返回链接后，需要设备固件支持 URL 音乐播放，才能真正从扬声器播出；接入本服务不会自动给固件添加解码播放器。</p>
       <div className="row gap-10" style={{ flexWrap: 'wrap' }}>
         <a className="btn btn--sm" href="https://github.com/poouo/MiyinMusic/blob/main/docs/device-api.md" target="_blank" rel="noreferrer">完整 API 接入示例</a>
@@ -127,6 +128,7 @@ export function DeviceApiSettings() {
         <DeviceKeys keys={status.keys} busy={busy} onRevoke={setRevoking} onEdit={setEditing} />
       </>}
     </div>
+    {status ? <XiaozhiSettings allowed={status.access.allowed} onChange={() => setAttempt(value => value + 1)} /> : null}
     <ApiGuide />
     <Modal open={!!secret} title="保存你的设备密钥" onClose={() => setSecret('')}>
       <div className="stack gap-16"><p className="dim">完整密钥仅显示这一次。请保存到设备端，关闭后无法找回；遗失时撤销并重新创建。</p>

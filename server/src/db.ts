@@ -27,6 +27,13 @@ const SCHEMA = [
     last_used_at INTEGER
   )`,
   `CREATE INDEX IF NOT EXISTS idx_device_keys_user ON device_api_keys(user_id)`,
+  `CREATE TABLE IF NOT EXISTS xiaozhi_mcp_connections (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    key_id TEXT NOT NULL REFERENCES device_api_keys(id) ON DELETE CASCADE,
+    endpoint_hash TEXT NOT NULL UNIQUE,
+    secret TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
+  )`,
   `CREATE TABLE IF NOT EXISTS audio_validation (
     cache_key TEXT PRIMARY KEY,
     bytes INTEGER NOT NULL,

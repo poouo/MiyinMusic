@@ -10,6 +10,8 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 
 智能硬件接入：[设备 API](docs/device-api.md) · [小智 AI / MCP](docs/xiaozhi-mcp.md)。支持按用户管理设备密钥、搜索歌曲和获取播放 / 下载直链，设备直接连接音源，音频不经本站代理。
 
+小智 AI 可在「设置 → 设备 API → 小智 AI」粘贴官方 MCP 接入点直接连接，服务端保持连接并自动重连，无需单独部署桥接容器。
+
 三端新增功能、操作入口与验证范围见 [1–7 工作包实施记录](docs/implementation-progress.md)。现有发布包尚未包含当前工作区未发布的改动。
 
 ---

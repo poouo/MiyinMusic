@@ -12,6 +12,7 @@ import { migrateLegacyData } from './migrate.js'
 import { getAppConfig } from './app-config.js'
 import { pruneGuard } from './login-guard.js'
 import { HttpError } from './errors.js'
+import { startXiaozhiConnections, stopXiaozhiConnections } from './xiaozhi.js'
 
 const log = logger('server')
 
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
   server.headersTimeout = 70_000
 
   server.listen(config.port, config.host, () => {
+    const host = config.host === '0.0.0.0' ? '127.0.0.1' : config.host === '::' ? '[::1]' : config.host.includes(':') ? '[' + config.host + ']' : config.host
+    startXiaozhiConnections('http://' + host + ':' + config.port + '/api/v1/mcp')
     log.info('觅音已启动 → http://localhost:' + config.port)
     log.info('数据目录：' + config.dataDir)
   })
@@ -69,6 +72,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     log.info('收到 ' + signal + '，正在退出…')
     sourceManager.dispose()
+    stopXiaozhiConnections()
     flushLibraries()
     closeDb()
     server.close(() => process.exit(0))

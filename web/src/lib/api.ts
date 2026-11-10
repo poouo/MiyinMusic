@@ -30,6 +30,7 @@ import type {
   DeviceApiConfig,
   DeviceApiStatus,
   DeviceKey,
+  XiaozhiStatus,
   DeviceScope,
   DeviceAccess,
 } from './types'
@@ -150,6 +151,10 @@ export const api = {
     request<DownloadResult>('/api/download', { method: 'POST', body: JSON.stringify({ song }) }),
   access: () => request<AccessInfo>('/api/access'),
   deviceApi: {
+    xiaozhi: () => request<XiaozhiStatus>('/api/device-api/xiaozhi'),
+    saveXiaozhi: (body: { endpoint?: string; enabled: boolean; scopes?: DeviceScope[] }) =>
+      request<XiaozhiStatus>('/api/device-api/xiaozhi', { method: 'PUT', body: JSON.stringify(body) }),
+    removeXiaozhi: () => request<XiaozhiStatus>('/api/device-api/xiaozhi', { method: 'DELETE' }),
     status: () => request<DeviceApiStatus>('/api/device-api'),
     create: (body: { name: string; scopes: DeviceScope[]; expiresInDays: number | null }) =>
       request<{ key: DeviceKey; token: string }>('/api/device-api/keys', { method: 'POST', body: JSON.stringify(body) }),

@@ -6,6 +6,7 @@ export interface XiaozhiBridgeOptions {
   apiKey: string
   log?: (message: string) => void
   initialBackoffMs?: number
+  onState?: (state: 'connecting' | 'connected' | 'reconnecting', connectedAt?: number) => void
 }
 
 /** Xiaozhi's official MCP endpoint carries one JSON-RPC message per WebSocket frame. */
@@ -47,6 +48,7 @@ export class XiaozhiMcpBridge {
   private connect(): void {
     if (this.stopped) return
     this.log('正在连接小智 MCP 接入点…')
+    this.options.onState?.('connecting')
     const socket = new WebSocket(this.options.endpoint, { maxPayload: 64 * 1024, handshakeTimeout: 15000 })
     this.socket = socket
     let openedAt = 0, alive = true
@@ -54,6 +56,7 @@ export class XiaozhiMcpBridge {
       openedAt = Date.now()
       this.protocolVersion = '2024-11-05'
       this.log('小智 MCP 已连接')
+      this.options.onState?.('connected', openedAt)
       this.heartbeat = setInterval(() => {
         if (!alive) { socket.terminate(); return }
         alive = false; socket.ping()
@@ -70,6 +73,7 @@ export class XiaozhiMcpBridge {
       const wait = this.backoff
       this.backoff = Math.min(60000, this.backoff * 2)
       this.log('小智 MCP 已断开，稍后自动重连')
+      this.options.onState?.('reconnecting')
       this.reconnectTimer = setTimeout(() => this.connect(), wait)
     })
   }

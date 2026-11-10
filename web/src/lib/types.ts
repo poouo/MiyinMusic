@@ -265,6 +265,15 @@ export interface DeviceKey {
   lastUsedAt: number | null
 }
 export interface DeviceApiStatus { access: DeviceAccess; keys: DeviceKey[] }
+export interface XiaozhiStatus {
+  configured: boolean
+  enabled: boolean
+  state: 'disabled' | 'connecting' | 'connected' | 'reconnecting' | 'blocked' | 'error'
+  connectedAt?: number
+  message?: string
+  keyId?: string
+  scopes?: DeviceScope[]
+}
 
 export interface RegistrationConfig {
   enabled: boolean

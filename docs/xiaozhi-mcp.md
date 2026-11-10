@@ -2,7 +2,24 @@
 
 觅音同时提供 HTTP API 与 MCP，使用同一个用户设备密钥。MCP 工具只搜索音乐、读取账号自己的歌单 / 喜欢及返回音源直链，**不会代理音频，也不会自行修改硬件固件**。API 参数与权限见 [设备 API](device-api.md)。
 
-## 准备密钥
+## 在觅音中连接小智（推荐）
+
+按照[小智官方接入说明](https://my.feishu.cn/wiki/HiPEwZ37XiitnwktX13cEM5KnSb)，连接方向为 **觅音服务端 → 小智智能体专属 WebSocket 接入点 → 小智大模型调用工具**。HTTP MCP 地址用于通用客户端，不是应当粘贴到小智控制台的接入点。
+
+1. 管理员在「设备 API」开启总开关并授权你的账号。
+2. 登录 [xiaozhi.me](https://xiaozhi.me)，进入智能体的「配置角色」，复制右下角完整的 MCP 接入点（`wss://api.xiaozhi.me/mcp/?token=…`）。
+3. 在觅音「设置 → 设备 API → 小智 AI」粘贴接入点，选择权限，点击「保存并连接」。默认只授权搜索和播放直链；需要下载时再勾选下载直链。
+4. 觅音显示「已连接」后，到小智控制台确认已发现工具，再用语音调用。网络连接成功不等同于音箱已具备音乐解码能力。
+
+无需安装 Python、额外启动容器或手动复制觅音密钥。服务端自动为当前用户创建一个名为「小智 MCP」的独立长期设备密钥，沿用设备 API 的权限、限流及会员额度校验。关闭网页不影响连接，服务重启会恢复启用的连接；断网自动重连。每个账号保存一个接入点，同一个接入点不能被多个账号重复占用。
+
+「断开连接」保留配置；「移除接入」同时删除对应设备密钥。管理员撤销授权、关闭 API 或停用账号后，后续调用立即被后端拒绝，连接会在状态刷新或后台检查时断开（后台检查间隔 15 秒）。直接删除该设备密钥也会删除接入配置。
+
+接入点 token 和自动生成的设备密钥加密保存在数据库中，不通过状态接口返回。备份、迁移时必须同时保留数据目录中的 `miyin.db` 和 `xiaozhi-mcp.key`，后者丢失后需移除并重新连接。不要将这两个文件提交到仓库。
+
+已部署独立桥接容器时，先停止相同接入点的旧桥接，再启用设置中的连接，避免占用官方连接额度。
+
+## 通用 API / 独立桥接的设备密钥
 
 管理员在后台「设备 API」开启总开关并授权用户。用户到自己的「设置 → 设备 API」创建一个独立密钥，例如「小智音箱」，建议先勾选搜索、在线播放；需要歌词 / 音乐库 / 下载时再勾选相应权限。完整密钥只显示一次，请保存到连接程序的环境变量中。
 
@@ -40,7 +57,9 @@
 
 本项目附带 `scripts/xiaozhi-mcp-bridge.mjs`。它将小智的 JSON-RPC WebSocket 消息转到当前用户的 HTTP MCP，返回工具结果；支持心跳、断线退避重连、并发上限和请求超时，不在日志中输出小智接入点 token 或觅音设备密钥。该连接只传工具消息，不传音乐音频。
 
-### Docker 部署（推荐）
+### 独立 Docker 桥接（可选）
+
+使用上面的设置入口时不需要本节。仅在希望将桥接独立部署到其他机器时使用，不要与设置入口同时连接相同接入点。
 
 先更新为包含 MCP 的新版服务端镜像。在 `docker-compose.yml` 所在目录的 `.env` 中填入你自己的值（不要提交这个文件）：
 
@@ -82,7 +101,25 @@ node scripts/xiaozhi-mcp-bridge.mjs
 
 看到「小智 MCP 已连接」后，回小智后台检查工具列表。若长期未出现工具，检查总开关、用户授权、密钥是否有效，以及桥接机器能否连接两个服务。仅凭本地协议测试不能证明你的具体小智接入点或硬件已联通。
 
-也可使用[小智官方 MCP 示例的 mcp_pipe](https://github.com/78/mcp-calculator)，把上面的 HTTP MCP 配置填到它的 `mcp_config.json`；它支持 HTTP → WebSocket 桥接。本项目的自带桥接无需额外安装 Python。
+### 使用官方示例程序（可选）
+
+官方文档中的 `FastMCP` 示例通过 stdio 暴露工具，`mcp_pipe.py` 主动连接小智并转发 JSON-RPC。官方示例仓库当前也支持通过 `mcp_proxy` 将 HTTP MCP 接入同一个管道，因此无需另写一套 Python 音乐服务。
+
+下载 [78/mcp-calculator](https://github.com/78/mcp-calculator)，安装其 `requirements.txt`，在它的 `mcp_config.json` 中配置：
+
+```json
+{
+  "mcpServers": {
+    "miyin": {
+      "type": "http",
+      "url": "https://你的站点/api/v1/mcp",
+      "headers": { "Authorization": "Bearer myk_你的设备密钥" }
+    }
+  }
+}
+```
+
+设置 `MCP_ENDPOINT` 为小智给出的完整接入点，然后在示例目录运行 `python mcp_pipe.py`。该方式与觅音内置连接二选一；本项目自带连接无需 Python。官方文档提到工具返回通常有长度限制（常见为 1024 字节），语音搜索应选择少量结果，完整歌单或歌词的可用长度取决于小智宿主。
 
 ## 工具列表
 
@@ -95,6 +132,7 @@ node scripts/xiaozhi-mcp-bridge.mjs
 | `miyin_get_playback_url` | `song_json`、`quality`、`fallback` | playback |
 | `miyin_find_playback_url` | `query`、`platform`、`quality`、`fallback`；搜索后解析第一首 | search + playback |
 | `miyin_get_download_url` | `song_json`、`quality`、`fallback`；成功签发扣 1 次下载次数 | download |
+| `miyin_find_download_url` | `query`、`platform`、`quality`、`fallback`；搜索后签发第一首的下载直链 | search + download |
 | `miyin_get_lyrics` | `song_json` | lyrics |
 | `miyin_list_playlists` | 无 | library |
 | `miyin_get_playlist` | `id` | library |
@@ -105,6 +143,8 @@ node scripts/xiaozhi-mcp-bridge.mjs
 ## 让小智实际播放音乐
 
 可用这样的意图请求工具：「搜索周杰伦的晴天，获取标准音质播放直链，允许降级。」`miyin_find_playback_url` 会返回歌曲、实际音质和音源 URL，并明确 `playbackStarted: false`。
+
+工具说明和参数 schema 会告诉小智各工具的用途与调用时机：「我想听周杰伦的晴天」使用 `miyin_find_playback_url`；「下载周杰伦的晴天」使用 `miyin_find_download_url`，成功返回 `url`、`filename`、实际音质及 `downloadStarted: false`。单纯听歌不调用下载工具，也不扣下载次数。下载工具带有非只读、非幂等标记，成功签发扣除一次额度，不应自动重复调用。
 
 **MCP 返回 URL 本身不会让普通小智固件开始播放 MP3 / FLAC。** 如果固件已有 URL 音乐播放工具，AI / 宿主需要把该 URL 交给它；否则还需要为对应硬件增加 HTTP 音频下载、解码和播放能力。这与觅音服务端 API / MCP 接口分别部署。标准小智通用工具中有音量控制，并不等同于通用 URL 音乐播放器。Hi-Res / FLAC 尤其需要硬件与固件解码支持。
 
