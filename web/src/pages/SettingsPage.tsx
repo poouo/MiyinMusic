@@ -3,9 +3,10 @@ import { api } from '../lib/api'
 import { navigate } from '../lib/router'
 import { useAuth } from '../state/auth'
 import { useAuthModal } from '../state/authModal'
+import { useAppConfig } from '../state/appConfig'
 import { THEMES, useSettings } from '../state/settings'
 import { useToast } from '../state/toast'
-import { PLATFORM_NAMES, QUALITY_NAMES, type Quality } from '../lib/types'
+import { PLATFORM_NAMES, QUALITY_NAMES, ROLE_NAMES, type Quality } from '../lib/types'
 import { initials } from '../lib/format'
 import { AlertIcon, CheckIcon, CrownIcon, LogOutIcon, ShieldIcon, SlidersIcon, UserIcon } from '../components/Icons'
 
@@ -23,6 +24,7 @@ const QUALITIES: Quality[] = ['flac24bit', 'flac', '320k', '128k']
 export function SettingsPage({ section: initialSection = 'account' }: { section?: Section }) {
   const auth = useAuth()
   const authModal = useAuthModal()
+  const appConfig = useAppConfig()
   const { settings, update } = useSettings()
   const toast = useToast()
   const [section, setSection] = useState<Section>(initialSection)
@@ -107,9 +109,9 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                       <div style={{ fontSize: 17, fontWeight: 500 }}>{auth.user.nickname}</div>
                       <div className="dim" style={{ fontSize: 12.5 }}>
                         @{auth.user.username}
-                        {auth.user.role === 'admin' ? (
+                        {auth.user.role !== 'user' ? (
                           <span className="tag tag--sq" style={{ marginLeft: 8 }}>
-                            <CrownIcon size={10} /> 管理员
+                            <CrownIcon size={10} /> {ROLE_NAMES[auth.user.role]}
                           </span>
                         ) : null}
                       </div>
@@ -201,6 +203,22 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                   </div>
                 </div>
               )}
+              {appConfig.config?.access ? <div className="setting-row" style={{ marginTop: 16 }}>
+                <div className="grow">
+                  <div className="setting-label">下载额度</div>
+                  <div className="setting-desc">
+                    {appConfig.downloadEnabled ? <>
+                      今日 {appConfig.config.access.usage.day.downloads} / {appConfig.config.access.dailyDownloads ?? '不限'} 次
+                      {' · '}本月 {appConfig.config.access.usage.month.downloads} / {appConfig.config.access.monthlyDownloads ?? '不限'} 次
+                      {appConfig.config.access.dailyBytes !== null || appConfig.config.access.monthlyBytes !== null ? <><br />
+                        今日流量 {Math.ceil(appConfig.config.access.usage.day.bytes / 1024 ** 2)} / {appConfig.config.access.dailyBytes === null ? '不限' : Math.round(appConfig.config.access.dailyBytes / 1024 ** 2)} MB
+                        {' · '}本月流量 {Math.ceil(appConfig.config.access.usage.month.bytes / 1024 ** 2)} / {appConfig.config.access.monthlyBytes === null ? '不限' : Math.round(appConfig.config.access.monthlyBytes / 1024 ** 2)} MB
+                      </> : null}
+                    </> : '当前身份未开放下载'}
+                  </div>
+                </div>
+                <button className="btn btn--sm btn--ghost" onClick={() => void appConfig.refresh()}>刷新</button>
+              </div> : null}
             </div>
           ) : null}
 
@@ -213,6 +231,7 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
                   <button
                     key={quality}
                     className={'chip' + (settings.quality[0] === quality ? ' is-active' : '')}
+                    disabled={!appConfig.playbackQualities.includes(quality)}
                     onClick={() => {
                       const rest = settings.quality.filter((item) => item !== quality)
                       update({ quality: [quality, ...rest] })

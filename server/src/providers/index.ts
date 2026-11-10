@@ -20,10 +20,6 @@ export function getProvider(platform: Platform): Provider {
   return provider
 }
 
-export function getLyric(song: Song) {
-  return getProvider(song.platform).lyric(song)
-}
-
 export function getPic(song: Song): Promise<string | null> {
   const provider = getProvider(song.platform)
   if (provider.pic) return provider.pic(song)

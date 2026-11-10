@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { HttpError } from './errors.js'
+import net from 'node:net'
 
 export function sendJson(res: ServerResponse, status: number, data: unknown): void {
   const body = Buffer.from(JSON.stringify(data))
@@ -58,9 +59,30 @@ export function parseCookies(req: IncomingMessage): Record<string, string> {
 }
 
 export function clientIp(req: IncomingMessage): string {
+  const normalize = (ip: string) => ip.toLowerCase().replace(/^::ffff:(?=\d+\.)/, '')
+  const remote = normalize(req.socket.remoteAddress ?? '')
+  // Forwarded headers are authoritative only when every intervening proxy is trusted.
+  const trusted = new net.BlockList()
+  for (const entry of (process.env.MIYIN_TRUSTED_PROXIES ?? '').split(',').map(value => value.trim()).filter(Boolean)) {
+    try {
+      const [address, prefix] = entry.split('/')
+      const family = net.isIP(address)
+      if (!family) continue
+      if (prefix === undefined) trusted.addAddress(address, family === 4 ? 'ipv4' : 'ipv6')
+      else trusted.addSubnet(address, Number(prefix), family === 4 ? 'ipv4' : 'ipv6')
+    } catch { /* Invalid proxy entries grant no trust. */ }
+  }
+  const isTrusted = (ip: string) => {
+    const family = net.isIP(ip)
+    return !!family && trusted.check(ip, family === 4 ? 'ipv4' : 'ipv6')
+  }
   const forwarded = req.headers['x-forwarded-for']
-  if (typeof forwarded === 'string' && forwarded) return forwarded.split(',')[0].trim()
-  return req.socket.remoteAddress ?? 'unknown'
+  if (!isTrusted(remote) || typeof forwarded !== 'string' || forwarded.length > 2048) return remote || 'unknown'
+  const chain = [...forwarded.split(',').map(value => normalize(value.trim())), remote]
+  if (chain.some(ip => !net.isIP(ip))) return remote || 'unknown'
+  let index = chain.length - 1
+  while (index > 0 && isTrusted(chain[index])) index--
+  return chain[index]
 }
 
 export function bearerToken(req: IncomingMessage): string | null {

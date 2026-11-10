@@ -1803,7 +1803,7 @@ textarea.input {
   text-align: left;
   transition: border-color 0.18s, background 0.18s, transform 0.18s;
 }
-.quality-card:hover {
+button.quality-card:hover {
   transform: translateY(-1px);
 }
 .quality-card.is-on {

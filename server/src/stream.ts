@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import dns from 'node:dns/promises'
 import net from 'node:net'
+import { once } from 'node:events'
 import { logger } from './log.js'
 
 const log = logger('proxy')
@@ -71,6 +72,10 @@ export interface ProxyOptions {
   attachment?: string
   /** 是否透传 Range（下载时不需要） */
   allowRange?: boolean
+  /** Run authorization after a successful upstream response, before writing headers. */
+  beforeStream?: (bytes: number | null) => void
+  beforeChunk?: (bytes: number) => void
+  afterStream?: () => void
 }
 
 /** 音频流代理：透传 Range，让 <audio> 可以拖动进度条 */
@@ -111,7 +116,7 @@ export async function proxyStream(
 
   let upstream: Response
   try {
-    upstream = await fetch(url, { headers, signal: controller.signal, redirect: 'follow' })
+    upstream = await fetch(url, { method: req.method === 'HEAD' ? 'HEAD' : 'GET', headers, signal: controller.signal, redirect: 'follow' })
   } catch (err) {
     clearTimeout(timer)
     if (!res.headersSent) res.writeHead(502).end('upstream error')
@@ -143,9 +148,18 @@ export async function proxyStream(
   }
 
   const contentType = upstream.headers.get('content-type') ?? (options.imageOnly ? 'image/jpeg' : 'audio/mpeg')
+  try {
+    const length = upstream.headers.get('content-length')
+    options.beforeStream?.(length && Number.isSafeInteger(Number(length)) && Number(length) >= 0 ? Number(length) : null)
+  } catch (error) {
+    clearTimeout(timer)
+    controller.abort()
+    await upstream.body?.cancel().catch(() => undefined)
+    throw error
+  }
   const outHeaders: Record<string, string> = {
     'Content-Type': contentType,
-    'Accept-Ranges': 'bytes',
+    'Accept-Ranges': options.allowRange === false ? 'none' : 'bytes',
     'Cache-Control': options.cacheSeconds ? 'public, max-age=' + options.cacheSeconds : 'no-store',
   }
   if (options.attachment) {
@@ -176,19 +190,22 @@ export async function proxyStream(
       const { done, value } = await reader.read()
       if (done) break
       if (!value) continue
+      if (res.destroyed) break
       sent += value.length
       if (maxBytes && sent > maxBytes) {
         log.warn('响应超出大小限制，已截断：', url.host)
         break
       }
+      options.beforeChunk?.(value.length)
       if (!res.write(Buffer.from(value))) {
-        await new Promise<void>((resolve) => res.once('drain', () => resolve()))
+        await once(res, 'drain', { signal: controller.signal })
       }
     }
   } catch (err) {
-    if (!res.writableEnded) res.end()
+    if (!res.writableEnded) res.destroy(err instanceof Error ? err : undefined)
   } finally {
     clearTimeout(timer)
+    options.afterStream?.()
     upstream.body?.cancel().catch(() => undefined)
     if (!res.writableEnded) res.end()
   }

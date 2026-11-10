@@ -25,3 +25,17 @@ body:has(.admin-standalone) { overflow: auto; }
   .admin-favorites .admin-toolbar { flex-wrap: wrap; }
   .admin-favorites .admin-toolbar > .grow { flex-basis: 100%; }
 }
+/* Membership policies share the existing admin cards and theme tokens. */
+.membership-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.membership-fields:disabled { opacity: .55; }
+.membership-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.membership-tab { padding: 10px 22px; border-radius: 8px; color: var(--text-dim); }
+.membership-tab.is-active { background: var(--accent-soft); color: var(--accent); }
+.membership-label { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+.membership-quota-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; margin-top: 8px; }
+.membership-quota { display: grid; gap: 8px; font-size: 13px; }
+.membership-quota__input { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
+.membership-quota__input .input { width: 100%; min-width: 0; }
+.membership-note { font-size: 12px; margin-top: 6px; line-height: 1.6; }
+.membership-summary { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+@media (max-width: 560px) { .membership-quota-grid { grid-template-columns: 1fr; } .membership-tab { padding: 10px 16px; } }

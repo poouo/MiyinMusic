@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { QUALITY_NAMES } from '../lib/types'
 import type { Quality } from '../lib/types'
 import { CheckIcon, ChevronDownIcon } from './Icons'
+import { useAppConfig } from '../state/appConfig'
 
 const QUALITIES: Quality[] = ['flac24bit', 'flac', '320k', '128k']
 
@@ -23,6 +24,7 @@ interface Props {
 
 /** 点击展开的音质选择菜单（替代原来「点一下切一档」的交互） */
 export function QualityMenu({ value, onChange, available, placement = 'top', compact = false }: Props) {
+  const { playbackQualities } = useAppConfig()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -61,12 +63,14 @@ export function QualityMenu({ value, onChange, available, placement = 'top', com
           {QUALITIES.map((quality) => {
             const supported = !available || available.length === 0 || available.includes(quality)
             const active = quality === value
+            const permitted = playbackQualities.includes(quality)
             return (
               <button
                 key={quality}
                 className={'quality-option' + (active ? ' is-active' : '') + (supported ? '' : ' is-disabled')}
                 role="option"
                 aria-selected={active}
+                disabled={!permitted}
                 onClick={() => {
                   onChange(quality)
                   setOpen(false)
@@ -77,7 +81,7 @@ export function QualityMenu({ value, onChange, available, placement = 'top', com
                   <span className="quality-option__name">{QUALITY_NAMES[quality]}</span>
                   <span className="quality-option__desc">
                     {DESCRIPTIONS[quality]}
-                    {supported ? '' : ' · 该歌曲可能不支持'}
+                    {!permitted ? ' · 当前身份不可用' : supported ? '' : ' · 该歌曲可能不支持'}
                   </span>
                 </span>
                 {active ? <CheckIcon size={15} /> : null}

@@ -48,6 +48,7 @@ async function main(): Promise<void> {
     const list = sourceManager.list()
     const ready = list.filter((s) => s.status === 'ready')
     log.info('音源加载完成：' + ready.length + '/' + list.length + ' 可用')
+    audioCache.warmCollections(false)
   })
 
   // 音源来自 GitHub，脚本会持续更新：启动后先自动检查一次，之后每 6 小时同步

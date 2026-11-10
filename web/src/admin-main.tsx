@@ -9,7 +9,7 @@ import './styles/global.css'
 import './styles/admin.css'
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode><SettingsProvider><ToastProvider><AppConfigProvider><AuthProvider>
+  <StrictMode><SettingsProvider><ToastProvider><AuthProvider><AppConfigProvider>
     <main className="admin-standalone"><AdminPage /></main>
-  </AuthProvider></AppConfigProvider></ToastProvider></SettingsProvider></StrictMode>,
+  </AppConfigProvider></AuthProvider></ToastProvider></SettingsProvider></StrictMode>,
 )

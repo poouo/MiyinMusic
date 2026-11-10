@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { AdminPlaylists } from '../components/AdminPlaylists'
 import { AdminFavorites } from '../components/AdminFavorites'
+import { MembershipSettings } from '../components/MembershipSettings'
 import { formatCount, initials, timeAgo } from '../lib/format'
 import {
   AUDIENCE_NAMES,
@@ -16,6 +17,8 @@ import {
   type CacheConfig,
   type CacheStats,
   type DownloadConfig,
+  type MembershipConfig,
+  type AccessInfo,
   type Quality,
   type SourceInfo,
   type UserRole,
@@ -57,7 +60,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof UsersIcon }[] = [
   { id: 'favorites', label: '用户收藏', icon: HeartIcon },
   { id: 'sources', label: '音源', icon: ServerIcon },
   { id: 'site', label: '站点设置', icon: LockIcon },
-  { id: 'download', label: '下载权限', icon: DownloadIcon },
+  { id: 'download', label: '会员与权限', icon: CrownIcon },
   { id: 'cache', label: '音乐缓存', icon: DatabaseIcon },
   { id: 'audit', label: '操作日志', icon: FileTextIcon },
 ]
@@ -81,6 +84,7 @@ const AUDIT_LABELS: Record<string, string> = {
   'admin.playlist.removeSong': '移除歌单歌曲',
   'admin.user.logout': '强制退出用户',
   'admin.config': '后台修改站点配置',
+  'admin.quota.reset': '重置下载额度',
   'admin.unlock': '后台解除锁定',
 }
 
@@ -627,6 +631,7 @@ function UsersSection({ onPlaylists, onFavorites }: { onPlaylists: (user: AdminU
               <label>重置密码（留空表示不改）</label>
               <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位" />
             </div>
+            <UserDownloadUsage userId={editing.id} />
             <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
               <button className="btn btn--ghost" onClick={() => setEditing(null)}>取消</button>
               <button
@@ -756,7 +761,37 @@ function SourcesSection() {
   )
 }
 
-function useAdminConfig() {
+function UserDownloadUsage({ userId }: { userId: string }) {
+  const toast = useToast()
+  const [access, setAccess] = useState<AccessInfo | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    setAccess(null)
+    api.admin.userAccess(userId).then(result => !cancelled && setAccess(result))
+      .catch(error => !cancelled && setError((error as Error).message))
+    return () => { cancelled = true }
+  }, [userId])
+  const reset = async () => {
+    setBusy(true)
+    try { setAccess(await api.admin.resetUserQuota(userId)); toast.success('下载额度已重置') }
+    catch (error) { toast.error((error as Error).message) }
+    finally { setBusy(false) }
+  }
+  return <div className="field">
+    <label>下载用量</label>
+    {access ? <>
+      <div className="dim" style={{ fontSize: 13, lineHeight: 1.8 }}>
+        今日 {access.usage.day.downloads} / {access.dailyDownloads ?? '不限'} 次 · {formatBytes(access.usage.day.bytes)} / {access.dailyBytes === null ? '不限' : formatBytes(access.dailyBytes)}<br />
+        本月 {access.usage.month.downloads} / {access.monthlyDownloads ?? '不限'} 次 · {formatBytes(access.usage.month.bytes)} / {access.monthlyBytes === null ? '不限' : formatBytes(access.monthlyBytes)}
+      </div>
+      <button className="btn btn--sm btn--ghost" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={() => void reset()}>{busy ? '重置中…' : '重置下载额度'}</button>
+    </> : <span className="dim">{error || '加载中…'}</span>}
+  </div>
+}
+
+function useAdminConfig(section: 'site' | 'membership' | 'cache') {
   const toast = useToast()
   const appConfig = useAppConfig()
   const [loading, setLoading] = useState(true)
@@ -764,6 +799,7 @@ function useAdminConfig() {
   const [registration, setRegistration] = useState(true)
   const [download, setDownload] = useState<DownloadConfig | null>(null)
   const [cache, setCache] = useState<CacheConfig | null>(null)
+  const [membership, setMembership] = useState<MembershipConfig | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -774,6 +810,7 @@ function useAdminConfig() {
         setRegistration(result.config.registration.enabled)
         setDownload(result.config.download)
         setCache(result.config.cache)
+        setMembership(result.config.membership)
       })
       .catch((err: Error) => toast.error(err.message))
       .finally(() => !cancelled && setLoading(false))
@@ -783,13 +820,15 @@ function useAdminConfig() {
   }, [toast])
 
   const save = async () => {
-    if (!download || !cache) return
+    if (!download || !cache || !membership) return
     setSaving(true)
     try {
-      const result = await api.admin.saveConfig({ registration: { enabled: registration }, download, cache })
+      const result = await api.admin.saveConfig(section === 'site' ? { registration: { enabled: registration } }
+        : section === 'cache' ? { cache } : { membership })
       setRegistration(result.config.registration.enabled)
       setDownload(result.config.download)
       setCache(result.config.cache)
+      setMembership(result.config.membership)
       void appConfig.refresh()
       toast.success('设置已保存')
     } catch (err) {
@@ -799,11 +838,11 @@ function useAdminConfig() {
     }
   }
 
-  return { loading, saving, registration, setRegistration, download, setDownload, cache, setCache, save }
+  return { loading, saving, registration, setRegistration, download, setDownload, cache, setCache, membership, setMembership, save }
 }
 
 function SiteSection() {
-  const { loading, saving, registration, setRegistration, save } = useAdminConfig()
+  const { loading, saving, registration, setRegistration, save } = useAdminConfig('site')
 
   if (loading) return <div className="admin-loading"><LoaderIcon size={18} /> 加载中…</div>
 
@@ -833,9 +872,9 @@ function SiteSection() {
       <div className="admin-card glass">
         <div className="admin-card__head"><div className="admin-card__title">角色说明</div></div>
         <div className="dim" style={{ fontSize: 13, lineHeight: 1.9 }}>
-          · 游客：未登录，可浏览与在线播放，能否下载由下面的策略决定。<br />
+          · 游客：未登录，可浏览与在线播放，权限在「会员与权限」配置。<br />
           · 普通用户：自行注册的账号。<br />
-          · 会员：由管理员在用户管理里指定的角色，可单独放开下载权限。<br />
+          · 会员：由管理员在用户管理里指定，权限在「会员与权限」配置。<br />
           · 管理员：可进入本后台，默认拥有全部权限。
         </div>
       </div>
@@ -844,89 +883,9 @@ function SiteSection() {
 }
 
 function DownloadSection() {
-  const { loading, saving, download, setDownload, save } = useAdminConfig()
-
-  if (loading || !download) return <div className="admin-loading"><LoaderIcon size={18} /> 加载中…</div>
-
-  const toggleRole = (audience: Audience) => {
-    const has = download.roles.includes(audience)
-    setDownload({ ...download, roles: has ? download.roles.filter((item) => item !== audience) : [...download.roles, audience] })
-  }
-  const toggleQuality = (quality: Quality) => {
-    const has = download.qualities.includes(quality)
-    setDownload({ ...download, qualities: has ? download.qualities.filter((item) => item !== quality) : [...download.qualities, quality] })
-  }
-
-  return (
-    <div className="stack gap-16">
-      <div className="admin-card glass">
-        <div className="admin-card__head">
-          <div>
-            <div className="admin-card__title">下载总开关</div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>关闭后所有角色都无法下载。</div>
-          </div>
-          <button className={'switch' + (download.enabled ? ' is-on' : '')} onClick={() => setDownload({ ...download, enabled: !download.enabled })} aria-label="下载开关" />
-        </div>
-      </div>
-
-      <div className="admin-card glass">
-        <div className="admin-card__head">
-          <div>
-            <div className="admin-card__title">允许下载的受众</div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>游客需要在下方同时勾选「游客」才允许未登录下载。</div>
-          </div>
-        </div>
-        <div className="audience-grid">
-          {(['guest', 'user', 'vip', 'admin'] as Audience[]).map((audience) => {
-            const checked = download.roles.includes(audience)
-            return (
-              <button key={audience} className={'audience-card' + (checked ? ' is-on' : '')} onClick={() => toggleRole(audience)}>
-                <span className="quality-card__check">{checked ? <CheckIcon size={14} /> : null}</span>
-                <span className="audience-card__name">{AUDIENCE_NAMES[audience]}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="admin-card glass">
-        <div className="admin-card__head">
-          <div>
-            <div className="admin-card__title">允许下载的音质</div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>只勾选「高品质」时用户会拿到 320k；勾选「无损」才会给 flac。</div>
-          </div>
-        </div>
-        <div className="quality-grid">
-          {(['flac24bit', 'flac', '320k', '128k'] as Quality[]).map((quality) => {
-            const checked = download.qualities.includes(quality)
-            return (
-              <button key={quality} className={'quality-card' + (checked ? ' is-on' : '')} onClick={() => toggleQuality(quality)}>
-                <span className="quality-card__check">{checked ? <CheckIcon size={14} /> : null}</span>
-                <span>
-                  <span className="quality-card__name">{QUALITY_NAMES[quality]}</span>
-                  <span className="quality-card__meta">{quality}</span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="admin-card glass">
-        <div className="admin-card__head"><div className="admin-card__title">当前策略</div></div>
-        <div className="dim" style={{ fontSize: 13, lineHeight: 1.9 }}>
-          · 可下载角色：{download.roles.map((item) => AUDIENCE_NAMES[item]).join('、') || '无'}<br />
-          · 可下载音质：{download.qualities.map((item) => QUALITY_NAMES[item]).join('、') || '无'}<br />
-          · 下载链接带签名且 5 分钟有效，只能通过登录态取流。
-        </div>
-        <div className="row gap-8" style={{ justifyContent: 'flex-end', marginTop: 14 }}>
-          <button className="btn btn--primary" onClick={() => void save()} disabled={saving}>
-            {saving ? '保存中…' : '保存设置'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  const { loading, saving, membership, setMembership, save } = useAdminConfig('membership')
+  if (loading || !membership) return <div className="admin-loading"><LoaderIcon size={18} /> 加载中…</div>
+  return <MembershipSettings value={membership} onChange={setMembership} saving={saving} onSave={() => void save()} />
 }
 
 function formatBytes(bytes: number): string {
@@ -939,7 +898,7 @@ function formatBytes(bytes: number): string {
 
 function CacheSection() {
   const toast = useToast()
-  const { loading, saving, cache, setCache, save } = useAdminConfig()
+  const { loading, saving, cache, setCache, save } = useAdminConfig('cache')
   const [stats, setStats] = useState<CacheStats | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -967,22 +926,12 @@ function CacheSection() {
     setCache({ ...cache, maxBytes: safe * 1024 ** 3 })
   }
 
-  const toggleQuality = (quality: Quality) => {
-    const has = cache.qualities.includes(quality)
-    const next = has ? cache.qualities.filter((item) => item !== quality) : [...cache.qualities, quality]
-    if (!next.length) {
-      toast.show('至少保留一种缓存音质')
-      return
-    }
-    setCache({ ...cache, qualities: next })
-  }
-
   const clearCache = async () => {
-    if (!window.confirm('确定清空服务端音频缓存吗？已缓存的歌单歌曲失效后需要重新预热。')) return
+    if (!window.confirm('确定清空服务端音频和歌词缓存吗？')) return
     setBusy(true)
     try {
       const result = await api.admin.clearCache()
-      toast.success('已清空 ' + result.removed.removed + ' 个文件，释放 ' + formatBytes(result.removed.bytes))
+      toast.success('已清空 ' + result.removed.removed + ' 项缓存，释放 ' + formatBytes(result.removed.bytes))
       await refresh()
     } catch (err) {
       toast.error((err as Error).message)
@@ -1011,7 +960,7 @@ function CacheSection() {
           <div>
             <div className="admin-card__title">服务端音乐缓存</div>
             <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-              把歌单与我的喜欢里的歌曲缓存到服务器硬盘，音源失效后依然可以播放。
+              保存全部可用音质和歌词，同一首歌由所有用户共享缓存。
             </div>
           </div>
           <button
@@ -1024,7 +973,7 @@ function CacheSection() {
           <div>
             <div className="admin-card__title">收藏 / 歌单自动缓存</div>
             <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-              用户把歌曲加入歌单或喜欢时，后台自动解析音源并缓存；关闭后只能手动预热。
+              收藏、加入歌单和服务启动后自动补齐缓存。
             </div>
           </div>
           <button
@@ -1074,7 +1023,8 @@ function CacheSection() {
         </div>
         <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <span className="dim" style={{ fontSize: 12.5 }}>
-            {stats ? '已用 ' + formatBytes(stats.bytes) + ' · ' + stats.count + ' 个文件（上限 ' + formatBytes(cache.maxBytes) + '）' : '正在读取缓存统计…'}
+            {stats ? '已用 ' + formatBytes(stats.bytes) + ' · ' + stats.count + ' 个音频文件（上限 ' + formatBytes(cache.maxBytes) + '）' : '正在读取缓存统计…'}
+            {stats ? ' · ' + (stats.lyricCount ?? 0) + ' 首歌词' : ''}
             {stats && stats.warming > 0 ? ' · ' + stats.warming + ' 首排队中' : ''}
           </span>
           <div className="row gap-8">
@@ -1089,25 +1039,22 @@ function CacheSection() {
       <div className="admin-card glass">
         <div className="admin-card__head">
           <div>
-            <div className="admin-card__title">缓存音质</div>
+            <div className="admin-card__title">全部可用音质</div>
             <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-              优先尝试勾选的音质，音源不支持时自动降级。勾选无损会显著增加磁盘占用。
+              标准、高品质、无损、Hi-Res 分别保存，无法获取的音质自动跳过。
             </div>
           </div>
         </div>
         <div className="quality-grid">
-          {(['flac24bit', 'flac', '320k', '128k'] as Quality[]).map((quality) => {
-            const checked = cache.qualities.includes(quality)
-            return (
-              <button key={quality} className={'quality-card' + (checked ? ' is-on' : '')} onClick={() => toggleQuality(quality)}>
-                <span className="quality-card__check">{checked ? <CheckIcon size={14} /> : null}</span>
-                <span>
-                  <span className="quality-card__name">{QUALITY_NAMES[quality]}</span>
-                  <span className="quality-card__meta">{quality}</span>
-                </span>
-              </button>
-            )
-          })}
+          {(['128k', '320k', 'flac', 'flac24bit'] as Quality[]).map((quality) => (
+            <div key={quality} className="quality-card is-on">
+              <span className="quality-card__check"><CheckIcon size={14} /></span>
+              <span>
+                <span className="quality-card__name">{QUALITY_NAMES[quality]}</span>
+                <span className="quality-card__meta">{quality}</span>
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -1115,8 +1062,8 @@ function CacheSection() {
         <div className="admin-card__head"><div className="admin-card__title">当前策略</div></div>
         <div className="dim" style={{ fontSize: 13, lineHeight: 1.9 }}>
           · 缓存：{cache.enabled ? '开启' : '关闭'} · 自动缓存歌单：{cache.warmCollections ? '开启' : '关闭'}<br />
-          · 总容量：{formatBytes(cache.maxBytes)} · 优先音质：{cache.qualities.map((item) => QUALITY_NAMES[item]).join('、') || '无'}<br />
-          · 播放时优先使用服务端缓存；客户端下载的文件由用户自行管理，不受容量限制。
+          · 总容量：{formatBytes(cache.maxBytes)} · 全部可用音质 · 歌词持久缓存<br />
+          · 用户歌单与收藏各自独立，音频和歌词共享；超过容量按最近使用时间清理。
         </div>
         <div className="row gap-8" style={{ justifyContent: 'flex-end', marginTop: 14 }}>
           <button className="btn btn--primary" onClick={() => void save()} disabled={saving}>

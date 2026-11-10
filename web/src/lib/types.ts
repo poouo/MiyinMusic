@@ -185,13 +185,40 @@ export interface DownloadConfig {
   qualities: Quality[]
 }
 
+export interface AudiencePolicy {
+  playbackEnabled: boolean
+  playbackQualities: Quality[]
+  downloadEnabled: boolean
+  downloadQualities: Quality[]
+  dailyDownloads: number | null
+  monthlyDownloads: number | null
+  dailyBytes: number | null
+  monthlyBytes: number | null
+}
+
+export interface MembershipConfig {
+  enabled: boolean
+  audiences: Record<'guest' | 'user' | 'vip', AudiencePolicy>
+}
+
+export interface AccessInfo extends AudiencePolicy {
+  audience: Audience
+  usage: {
+    day: { downloads: number; bytes: number }
+    month: { downloads: number; bytes: number }
+    dayKey: string
+    monthKey: string
+    timezone: string
+  }
+}
+
 export interface CacheConfig {
   enabled: boolean
   /** 服务端缓存总大小（字节） */
   maxBytes: number
   /** 收藏 / 歌单自动缓存 */
   warmCollections: boolean
-  /** 缓存优先音质 */
+  /** 兼容字段，固定为全部音质 */
   qualities: Quality[]
 }
 
@@ -202,6 +229,8 @@ export interface CacheStats {
   maxBytes: number
   dir: string
   warming: number
+  lyricCount: number
+  lyricBytes: number
 }
 
 export interface AppConfig {
@@ -209,6 +238,8 @@ export interface AppConfig {
   qualities: Quality[]
   allowRegister: boolean
   download: DownloadConfig
+  membership?: MembershipConfig
+  access?: AccessInfo
 }
 
 export interface RegistrationConfig {

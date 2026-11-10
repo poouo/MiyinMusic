@@ -11,6 +11,8 @@ import type {
   CacheStats,
   ChartInfo,
   DownloadConfig,
+  MembershipConfig,
+  AccessInfo,
   DownloadResult,
   RegistrationConfig,
   LibraryData,
@@ -140,9 +142,12 @@ export const api = {
 
   download: (song: Song) =>
     request<DownloadResult>('/api/download', { method: 'POST', body: JSON.stringify({ song }) }),
+  access: () => request<AccessInfo>('/api/access'),
 
   // ---- 管理后台（仅管理员；其他人一律 404） ----
   admin: {
+    userAccess: (userId: string) => request<AccessInfo>('/api/admin/users/' + encodeURIComponent(userId) + '/access'),
+    resetUserQuota: (userId: string) => request<AccessInfo>('/api/admin/users/' + encodeURIComponent(userId) + '/access', { method: 'DELETE' }),
     userFavorites: (userId: string, params: { q?: string; page?: number; limit?: number } = {}) =>
       request<AdminFavorites>('/api/admin/users/' + encodeURIComponent(userId) + '/favorites' + qs(params)),
     userPlaylists: (userId: string) => request<{ user: AdminUser; playlists: AdminPlaylistSummary[] }>('/api/admin/users/' + encodeURIComponent(userId) + '/playlists'),
@@ -192,15 +197,16 @@ export const api = {
       request<{ ok: boolean; removed: number }>('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ all: true }) }),
     audit: (params: { page?: number; limit?: number }) => request<{ audit: { total: number; page: number; limit: number; entries: AuditEntry[] } }>('/api/admin/audit' + qs(params)),
     config: () =>
-      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig } }>(
+      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig } }>(
         '/api/admin/config',
       ),
     saveConfig: (body: {
       registration?: { enabled: boolean }
       download?: Partial<DownloadConfig>
       cache?: Partial<CacheConfig>
+      membership?: MembershipConfig
     }) =>
-      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig } }>(
+      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig } }>(
         '/api/admin/config',
         {
           method: 'PUT',

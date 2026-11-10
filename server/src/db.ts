@@ -119,6 +119,33 @@ const SCHEMA = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_audio_cache_song ON audio_cache(song_key)`,
   `CREATE INDEX IF NOT EXISTS idx_audio_cache_access ON audio_cache(last_access_at)`,
+  `CREATE TABLE IF NOT EXISTS lyric_cache (
+    song_key TEXT PRIMARY KEY,
+    lyric_json TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    last_access_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_lyric_cache_access ON lyric_cache(last_access_at)`,
+  `CREATE TABLE IF NOT EXISTS download_usage (
+    subject TEXT NOT NULL,
+    period TEXT NOT NULL,
+    downloads INTEGER NOT NULL DEFAULT 0,
+    bytes INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (subject, period)
+  )`,
+  `CREATE TABLE IF NOT EXISTS download_tickets (
+    id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    target TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    started_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_download_usage_updated ON download_usage(updated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_download_tickets_expire ON download_tickets(expires_at)`,
 ]
 
 /** 打开（并在需要时初始化）数据库 */
@@ -226,7 +253,7 @@ export function databaseStats(): DatabaseStats {
   } catch {
     walBytes = 0
   }
-  const tables = ['users', 'sessions', 'playlists', 'playlist_songs', 'favorites', 'history', 'sources', 'audit_log', 'audio_cache']
+  const tables = ['users', 'sessions', 'playlists', 'playlist_songs', 'favorites', 'history', 'sources', 'audit_log', 'audio_cache', 'lyric_cache', 'download_usage', 'download_tickets']
   return {
     file: config.dbFile,
     bytes,

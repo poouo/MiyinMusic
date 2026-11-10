@@ -47,7 +47,7 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 - 系统托盘：关闭 / 最小化到托盘、托盘菜单播放控制、退出
 - 无音频设备时自动静音播放，进度与歌词仍正常推进
 - 客户端自动缓存 + 主动下载，播放优先本地文件
-- 服务端自动缓存歌单 / 收藏音频，音源脚本自动更新，客户端无需配置音源
+- 服务端自动缓存歌单 / 收藏的全部可用音质与歌词，多用户共享文件，音源脚本自动更新
 
 **Android 原生客户端（Compose）**
 - Kotlin + Jetpack Compose，原生 Material 3 界面，参考 QQ 音乐手机端
@@ -78,7 +78,7 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 - 下载范围可配置：**游客 / 普通用户 / 会员 / 管理员** 四个受众任意组合
 - 可下载音质可配置：Hi-Res / 无损 / 高品质 / 标准
 - 下载请求在服务端二次校验角色与音质，超出范围直接拒绝；下载链接带签名与时效
-- **音乐缓存**：歌单 / 收藏中的歌曲会自动缓存到服务端磁盘，上游音源失效后仍可播放；默认 8GB，管理后台可自定义到 4096GB，超出容量按 LRU 清理
+- **音乐缓存**：歌单 / 收藏中的歌曲按标准、高品质、无损、Hi-Res 分别缓存，无法获取的音质跳过；歌词原文、翻译与逐字时间持久保存。同平台同歌曲同音质由所有用户共享，收藏和歌单仍按账号独立；启动后补齐已有曲目。默认 8GB，管理后台可自定义到 4096GB，超出容量按 LRU 清理
 
 **管理后台**（路由 #/admin，非管理员一律返回 404）
 - 概览：用户/会话/播放统计、近 7 天注册曲线、平台分布、运行状态
@@ -86,7 +86,8 @@ Android APK：[下载](https://github.com/poouo/MiyinMusic/releases/download/and
 - 音源：启停、重新加载、查看各平台可用性
 - 站点设置：**开放 / 关闭注册**
 - 下载权限：受众与音质策略
-- **音乐缓存**：总容量、音质、自动预热开关、缓存统计 / 清空 / 手动预热
+- **会员与权限**：游客 / 普通用户 / 会员的收听音质、下载开关与音质、每日 / 每月次数和流量额度；可关闭全部身份限制，所有检查由后端执行，详见 [会员配置](docs/membership.md)
+- **音乐缓存**：总容量、自动预热开关、全部可用音质、音频与歌词统计 / 清空 / 手动预热
 - 操作日志：登录、注册、下载、后台操作全量审计
 
 ---
@@ -208,6 +209,7 @@ docker compose up -d
 | PORT | 3000 | 服务端口 |
 | HOST | 0.0.0.0 | 监听地址 |
 | MIYIN_DATA_DIR | ./data | 数据目录（数据库、音源缓存） |
+| MIYIN_TRUSTED_PROXIES | 空 | 信任的反向代理 IP / CIDR，逗号分隔；默认不信任客户端转发头，见 [游客额度](docs/membership.md) |
 | MIYIN_ALLOW_REGISTER | 1 | **首次初始化**时的注册开关，之后以管理后台为准 |
 | MIYIN_NO_SOURCE_UPDATE | 0 | 设为 1 时不联网刷新音源脚本 |
 | MIYIN_ACTION_TIMEOUT | 12000 | 单个音源动作超时（毫秒） |
@@ -283,6 +285,8 @@ docker compose up -d
 | audit_log | 审计日志 |
 | login_guard | 登录失败计数与锁定 |
 | audio_cache | 服务端音频缓存索引（歌单 / 收藏预热） |
+| lyric_cache | 所有用户共享的歌词原文、翻译与逐字时间 |
+| download_usage / download_tickets | 下载周期用量与一次性下载凭证 |
 
 备份：直接拷贝 data/miyin.db（可先执行 VACUUM INTO 得到紧凑副本）。
 

@@ -1,4 +1,3 @@
-import crypto from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { config } from './config.js'
 import {
@@ -24,13 +23,16 @@ import { HttpError, notFoundError } from './errors.js'
 import * as admin from './admin.js'
 import { listAudit } from './audit.js'
 import { enforce } from './rate-limit.js'
-import { audienceOf, getAppConfig, updateAppConfig, type CacheConfig } from './app-config.js'
+import { audienceOf, accessPolicy, publicDownloadConfig, getAppConfig, updateAppConfig, type CacheConfig } from './app-config.js'
+import * as membership from './membership.js'
+import { playbackUrl, readPlayback } from './media-token.js'
 import { assertNotLocked, listLocked, recordLoginFailure, clearLoginFailures, unlockAccount, unlockAll } from './login-guard.js'
 import { createUserByAdmin } from './auth.js'
 import { writeAudit } from './audit.js'
 import * as library from './library.js'
 import * as discover from './discover.js'
 import * as audioCache from './audio-cache.js'
+import * as lyricCache from './lyric-cache.js'
 import {
   bearerToken,
   clearCookie,
@@ -55,7 +57,6 @@ import { recommendations } from './recommendations.js'
 const log = logger('api')
 const SESSION_COOKIE = 'miyin_token'
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60
-const STREAM_SECRET = process.env.MIYIN_SECRET ?? crypto.randomBytes(32).toString('hex')
 
 function currentToken(req: IncomingMessage): string | null {
   return bearerToken(req) ?? parseCookies(req)[SESSION_COOKIE] ?? null
@@ -146,46 +147,6 @@ function requireAdminOr404(req: IncomingMessage): User {
   return user
 }
 
-/** 播放链接有效期：2 小时 */
-const STREAM_TTL = 2 * 60 * 60 * 1000
-/** 下载链接有效期：5 分钟 */
-const DOWNLOAD_TTL = 5 * 60 * 1000
-
-function safeEqual(a: string, b: string): boolean {
-  const left = Buffer.from(a)
-  const right = Buffer.from(b)
-  if (left.length !== right.length) return false
-  return crypto.timingSafeEqual(left, right)
-}
-
-/** 签名主体：登录用户按账号，游客按 UA 指纹，避免链接被复制到别处复用 */
-function signSubject(req: IncomingMessage): string {
-  const user = currentUser(req)
-  if (user) return 'u:' + user.id
-  const ua = String(req.headers['user-agent'] ?? '')
-  return 'g:' + crypto.createHash('sha256').update(ua).digest('hex').slice(0, 12)
-}
-
-function signStream(target: string, expire: number, subject: string): string {
-  return crypto
-    .createHmac('sha256', STREAM_SECRET)
-    .update('st|' + target + '|' + expire + '|' + subject)
-    .digest('base64url')
-    .slice(0, 24)
-}
-
-function streamUrl(target: string, req: IncomingMessage): string {
-  const expire = Date.now() + STREAM_TTL
-  return (
-    '/api/stream?u=' +
-    Buffer.from(target).toString('base64url') +
-    '&e=' +
-    expire +
-    '&s=' +
-    signStream(target, expire, signSubject(req))
-  )
-}
-
 function imageProxy(url: string): string {
   if (!url) return ''
   if (url.startsWith('/api/')) return url
@@ -201,14 +162,6 @@ function parsePlatform(value: string | null): Platform {
   const platform = String(value ?? '') as Platform
   if (!PLATFORMS.includes(platform)) throw new HttpError(400, '不支持的平台')
   return platform
-}
-
-function signDownload(target: string, filename: string, expire: number, subject: string): string {
-  return crypto
-    .createHmac('sha256', STREAM_SECRET)
-    .update('dl|' + target + '|' + filename + '|' + expire + '|' + subject)
-    .digest('base64url')
-    .slice(0, 24)
 }
 
 function extensionOf(quality: Quality): string {
@@ -243,13 +196,25 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
 
   if (pathname === '/api/config' && method === 'GET') {
     const available = sourceManager.availablePlatforms()
+    const appConfig = getAppConfig()
+    const viewer = currentUser(req)
     sendJson(res, 200, {
       platforms: PLATFORMS.map((id) => ({ id, name: PLATFORM_NAMES[id], available: available.includes(id) })),
       qualities: QUALITIES,
-      allowRegister: getAppConfig().registration.enabled,
-      download: getAppConfig().download,
+      allowRegister: appConfig.registration.enabled,
+      download: publicDownloadConfig(appConfig),
+      membership: appConfig.membership,
+      access: { audience: audienceOf(viewer?.role), ...accessPolicy(viewer?.role, appConfig),
+        usage: membership.usage(membership.quotaSubject(req, viewer)) },
       loginRequired: false,
     })
+    return true
+  }
+
+  if (pathname === '/api/access' && method === 'GET') {
+    const viewer = currentUser(req)
+    sendJson(res, 200, { audience: audienceOf(viewer?.role), ...accessPolicy(viewer?.role),
+      usage: membership.usage(membership.quotaSubject(req, viewer)) })
     return true
   }
 
@@ -352,6 +317,18 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       return true
     }
 
+    const userAccess = /^\/api\/admin\/users\/([^/]+)\/access$/.exec(pathname)
+    if (userAccess && (method === 'GET' || method === 'DELETE')) {
+      const user = admin.getUserDetail(decodeURIComponent(userAccess[1]))
+      const subject = 'u:' + user.id
+      if (method === 'DELETE') {
+        membership.resetUsage(subject)
+        writeAudit({ userId: actor.id, username: actor.username, action: 'admin.quota.reset', detail: user.username })
+      }
+      sendJson(res, 200, { audience: audienceOf(user.role), ...accessPolicy(user.role), usage: membership.usage(subject) })
+      return true
+    }
+
     if (pathname === '/api/admin/users' && method === 'GET') {
       const result = admin.listUsers({
         q: url.searchParams.get('q') ?? '',
@@ -441,6 +418,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         const body = await readJson<{ targetUserId?: string; name?: string }>(req)
         const targetUserId = String(body.targetUserId ?? '')
         const playlist = library.copyPlaylist(userId, id, targetUserId, body.name)
+        for (const song of playlist.songs) audioCache.warm(song)
         auditPlaylist('copy', JSON.stringify({ targetUserId, newPlaylistId: playlist.id }))
         sendJson(res, 201, { playlist })
         return true
@@ -518,8 +496,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         registration?: { enabled?: boolean }
         download?: { enabled?: boolean; roles?: string[]; qualities?: string[] }
         cache?: { enabled?: boolean; maxBytes?: number; warmCollections?: boolean; qualities?: string[] }
+        membership?: unknown
       }>(req)
       const requested = body.download ?? {}
+      const membershipPatch = body.membership === undefined ? undefined : membership.validateMembershipPatch(body.membership)
       const cachePatch: Partial<CacheConfig> = {}
       if (body.cache) {
         if (typeof body.cache.enabled === 'boolean') cachePatch.enabled = body.cache.enabled
@@ -537,6 +517,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
           qualities: QUALITIES.filter((q) => (requested.qualities ?? getAppConfig().download.qualities).includes(q)),
         } : undefined,
         cache: body.cache ? cachePatch : undefined,
+        membership: membershipPatch,
       })
       writeAudit({
         userId: actor.id,
@@ -557,9 +538,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
           Math.round(next.cache.maxBytes / 1024 / 1024) +
           'MB · ' +
           next.cache.qualities.join('/') +
-          '）',
+          '）；会员限制：' + (next.membership.enabled ? '开启' : '关闭') +
+          (membershipPatch ? '；角色权限：' + JSON.stringify(next.membership.audiences) : ''),
       })
       sendJson(res, 200, { config: next })
+      if (body.cache) audioCache.warmCollections(false)
       return true
     }
 
@@ -574,14 +557,14 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         userId: actor.id,
         username: actor.username,
         action: 'admin.cache.clear',
-        detail: '清空服务端音频缓存：' + removed.removed + ' 个文件 / ' + Math.round(removed.bytes / 1024 / 1024) + 'MB',
+        detail: '清空服务端音频与歌词缓存：' + removed.removed + ' 项 / ' + Math.round(removed.bytes / 1024 / 1024) + 'MB',
       })
       sendJson(res, 200, { ok: true, removed })
       return true
     }
 
     if (pathname === '/api/admin/cache/warm' && method === 'POST') {
-      const queued = audioCache.warmCollections(200)
+      const queued = audioCache.warmCollections()
       writeAudit({
         userId: actor.id,
         username: actor.username,
@@ -748,7 +731,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     enforce('lyric', rateKeyFor(req))
     const body = await readJson<{ song?: unknown }>(req)
     const song = library.sanitizeSong(body.song)
-    const lyric = await getProvider(song.platform).lyric(song)
+    const lyric = await lyricCache.get(song)
+    audioCache.enforceLimit()
     sendJson(res, 200, { lyric })
     return true
   }
@@ -787,14 +771,19 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     const body = await readJson<{ song?: unknown; qualities?: unknown; sourceId?: string; direct?: boolean }>(req)
     enforce('url', rateKeyFor(req))
     const song = library.sanitizeSong(body.song)
-    const allowed = qualityOrder(body.qualities)
+    const viewer = currentUser(req)
+    const policy = membership.assertPlayback(viewer?.role)
+    const requested = qualityOrder(body.qualities)
+    const allowed = requested.filter(quality => policy.playbackQualities.includes(quality))
+    if (!allowed.length) throw new HttpError(403, '当前身份不支持所选音质', 'playback_forbidden')
+    const subject = membership.quotaSubject(req, viewer)
 
     // A lower-quality cache is a fallback, not a reason to skip the requested quality.
     const cached = audioCache.lookup(song, allowed)
     const sendCached = () => {
       if (!cached) return
       sendJson(res, 200, {
-        playUrl: streamUrl('cache:' + cached.key, req),
+        playUrl: playbackUrl('cache:' + cached.key, cached.quality, subject),
         quality: cached.quality,
         platform: song.platform,
         cached: true,
@@ -816,10 +805,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       if (!cached) throw error
       sendCached(); return true
     }
-    // 默认只给同源代理地址；桌面客户端可以要 directUrl 用于本地缓存
+    membership.assertPlayback(currentUser(req)?.role, result.quality)
+    if (!allowed.includes(result.quality)) throw new HttpError(403, '返回音质超出权限范围')
     sendJson(res, 200, {
-      playUrl: streamUrl(result.url, req),
-      directUrl: body.direct === true ? result.url : undefined,
+      playUrl: playbackUrl(result.url, result.quality, subject),
       quality: result.quality,
       platform: result.platform,
       cached: false,
@@ -828,22 +817,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
   }
 
   // ---------- 代理：音频 / 图片 ----------
-  if (pathname === '/api/stream' && method === 'GET') {
+  if (pathname === '/api/stream' && (method === 'GET' || method === 'HEAD')) {
     enforce('stream', rateKeyFor(req))
-    const target = decodeTarget(url.searchParams.get('u') ?? '')
-    const signature = url.searchParams.get('s') ?? ''
-    const expire = Number(url.searchParams.get('e') ?? 0)
-    const subject = signSubject(req)
-    const valid =
-      !!target &&
-      !!signature &&
-      Number.isFinite(expire) &&
-      expire > Date.now() &&
-      safeEqual(signature, signStream(target, expire, subject))
-    if (!valid) {
-      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('播放链接无效或已过期')
-      return true
-    }
+    const viewer = currentUser(req)
+    const { target, quality } = readPlayback(url.searchParams.get('t') ?? '', membership.quotaSubject(req, viewer))
+    membership.assertPlayback(viewer?.role, quality)
     if (target.startsWith('cache:')) {
       await audioCache.streamCached(req, res, target.slice('cache:'.length))
       return true
@@ -863,122 +841,56 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     return true
   }
 
-  // ---------- 下载（需要登录 + 管理员开关） ----------
+  // ---------- 下载：取址与实际取流均在服务端检查权限 ----------
   if (pathname === '/api/download' && method === 'POST') {
     const viewer = currentUser(req)
-    const audience = audienceOf(viewer?.role)
-    const policy = getAppConfig().download
-    if (!policy.enabled) throw new HttpError(403, '管理员已关闭下载功能')
-    if (!policy.roles.includes(audience)) {
-      if (!viewer) throw new HttpError(401, '登录后才能下载')
-      throw new HttpError(403, '当前账号没有下载权限')
-    }
-    enforce('download', viewer ? 'u:' + viewer.id : 'ip:' + clientIp(req))
+    const policy = membership.assertDownload(viewer?.role)
+    const subject = membership.quotaSubject(req, viewer)
+    enforce('download', subject)
+    membership.checkDownloadAllowance(subject, policy)
     const body = await readJson<{ song?: unknown }>(req)
     const song = library.sanitizeSong(body.song)
-    const allowed = qualityOrder(policy.qualities, true)
-
+    const allowed = qualityOrder([...policy.downloadQualities].reverse(), true)
     const cached = audioCache.lookup(song, allowed)
-    if (cached) {
-      const filename = safeFilename(song, cached.quality)
-      const expireAt = Date.now() + DOWNLOAD_TTL
-      const target = 'cache:' + cached.key
-      const playUrl =
-        '/api/download/file?u=' +
-        Buffer.from(target).toString('base64url') +
-        '&n=' +
-        encodeURIComponent(filename) +
-        '&e=' +
-        expireAt +
-        '&s=' +
-        signDownload(target, filename, expireAt, signSubject(req))
-      if (viewer) {
-        writeAudit({
-          userId: viewer.id,
-          username: viewer.username,
-          action: 'user.download',
-          detail: song.singer + ' - ' + song.name + ' (' + cached.quality + ' · 服务端缓存)',
-        })
-      }
-      sendJson(res, 200, {
-        url: playUrl,
-        quality: cached.quality,
-        filename,
-        sourceName: '服务端缓存',
-        platform: song.platform,
-        cached: true,
-      })
-      return true
-    }
-
-    const result = await withDeadline(
-      sourceManager.getMusicUrl(song, allowed, undefined, true),
-      20000,
-      '下载地址获取超时，请稍后重试',
+    const result = cached ?? await withDeadline(
+      sourceManager.getMusicUrl(song, allowed, undefined, true), 20000, '下载地址获取超时，请稍后重试',
     )
-    if (!policy.qualities.includes(result.quality)) {
-      throw new HttpError(403, '该歌曲当前音质超出可下载范围')
-    }
+    // Configuration or role may change while waiting for the music source.
+    membership.assertDownload(currentUser(req)?.role, result.quality)
+    const target = cached ? 'cache:' + cached.key : (result as { url: string }).url
     const filename = safeFilename(song, result.quality)
-    const expireAt = Date.now() + DOWNLOAD_TTL
-    const playUrl =
-      '/api/download/file?u=' +
-      Buffer.from(result.url).toString('base64url') +
-      '&n=' +
-      encodeURIComponent(filename) +
-      '&e=' +
-      expireAt +
-      '&s=' +
-      signDownload(result.url, filename, expireAt, signSubject(req))
-    if (viewer) {
-      writeAudit({
-        userId: viewer.id,
-        username: viewer.username,
-        action: 'user.download',
-        detail: song.singer + ' - ' + song.name + ' (' + result.quality + ')',
-      })
-    }
     sendJson(res, 200, {
-      url: playUrl,
-      quality: result.quality,
-      filename,
-      sourceName: result.sourceName,
-      platform: result.platform,
-      cached: false,
+      url: membership.issueDownload(subject, target, result.quality, filename),
+      quality: result.quality, filename,
+      sourceName: cached ? '服务端缓存' : (result as { sourceName: string }).sourceName,
+      platform: song.platform, cached: !!cached,
     })
     return true
   }
 
   if (pathname === '/api/download/file' && method === 'GET') {
     const viewer = currentUser(req)
-    const policy = getAppConfig().download
-    if (!policy.enabled) throw new HttpError(403, '管理员已关闭下载功能')
-    if (!policy.roles.includes(audienceOf(viewer?.role))) {
-      throw new HttpError(viewer ? 403 : 401, viewer ? '当前账号没有下载权限' : '登录后才能下载')
+    const subject = membership.quotaSubject(req, viewer)
+    const ticket = membership.readDownload(url.searchParams.get('t') ?? '', subject)
+    membership.assertDownload(viewer?.role, ticket.quality)
+    // No ranges on a single-use ticket: one ticket cannot repeatedly fetch the file.
+    if (req.headers.range) throw new HttpError(416, '下载不支持分段，请重新发起下载')
+    let meter: ReturnType<typeof membership.beginDownload> | undefined
+    const options = {
+      attachment: ticket.filename,
+      beforeStream(bytes: number | null) {
+        meter = membership.beginDownload(ticket.id, subject, currentUser(req)?.role, bytes)
+        if (viewer) writeAudit({ userId: viewer.id, username: viewer.username,
+          action: 'user.download', detail: ticket.filename + ' (' + ticket.quality + ')' })
+      },
+      beforeChunk(bytes: number) { meter!.beforeChunk(bytes) },
+      afterStream() { meter?.finish() },
     }
-    const target = decodeTarget(url.searchParams.get('u') ?? '')
-    const filename = url.searchParams.get('n') ?? 'music.mp3'
-    const signature = url.searchParams.get('s') ?? ''
-    const expire = Number(url.searchParams.get('e') ?? 0)
-    const valid =
-      !!target &&
-      !!signature &&
-      Number.isFinite(expire) &&
-      expire > Date.now() &&
-      safeEqual(signature, signDownload(target, filename, expire, signSubject(req)))
-    if (!valid) {
-      throw new HttpError(403, '下载链接已失效', 'invalid_signature')
+    if (ticket.target.startsWith('cache:')) {
+      await audioCache.streamCached(req, res, ticket.target.slice('cache:'.length), options)
+    } else {
+      await proxyStream(req, res, ticket.target, { ...options, allowRange: false, timeoutMs: 45000, cacheSeconds: 0 })
     }
-    if (target.startsWith('cache:')) {
-      await audioCache.streamCached(req, res, target.slice('cache:'.length), { attachment: filename })
-      return true
-    }
-    await proxyStream(req, res, target, {
-      attachment: filename,
-      allowRange: false,
-      timeoutMs: 45000,
-      cacheSeconds: 0,
-    })
     return true
   }
 
@@ -1106,19 +1018,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     }>(req, 2 * 1024 * 1024)
     const imported = library.importLibrary(user.id, body)
     sendJson(res, 200, { library: toSafeLibrary(imported) })
-    // 导入后顺便把收藏 / 歌单里的歌曲补进服务端缓存队列（限制数量，避免一次性过载）
-    let warmed = 0
-    for (const favorite of imported.favorites) {
-      if (warmed++ >= 100) break
-      void audioCache.warm(favorite.song)
-    }
-    for (const playlist of imported.playlists) {
-      for (const song of playlist.songs) {
-        if (warmed++ >= 150) break
-        void audioCache.warm(song)
-      }
-      if (warmed >= 150) break
-    }
+    for (const favorite of imported.favorites) audioCache.warm(favorite.song)
+    for (const playlist of imported.playlists) for (const song of playlist.songs) audioCache.warm(song)
     return true
   }
 

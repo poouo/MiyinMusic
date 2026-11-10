@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { once } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { config } from './config.js'
 import { getDb, sql } from './db.js'
@@ -10,6 +11,7 @@ import { getAppConfig } from './app-config.js'
 import { sourceManager } from './lx/manager.js'
 import { assertPublicUrl } from './stream.js'
 import { logger } from './log.js'
+import * as lyricCache from './lyric-cache.js'
 import { QUALITIES, songKey, type Quality, type Song } from './types.js'
 
 const log = logger('audio-cache')
@@ -23,8 +25,6 @@ const TOUCH_INTERVAL = 30 * 1000
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-
-const QUALITY_RANK: Record<Quality, number> = { flac24bit: 4, flac: 3, '320k': 2, '128k': 1 }
 
 interface CacheRow {
   cache_key: string
@@ -49,7 +49,8 @@ export interface CachedAudio {
 
 const inflight = new Map<string, Promise<CachedAudio | null>>()
 const warmQueue: Song[] = []
-const warmQueued = new Set<string>()
+const warmQueued = new Map<string, Song>()
+let generation = 0
 let warmActive = 0
 let initialized = false
 
@@ -71,12 +72,6 @@ function fileExists(name: string): boolean {
   } catch {
     return false
   }
-}
-
-function normalizeQualities(input: unknown): Quality[] {
-  const list = Array.isArray(input) ? input : []
-  const out = QUALITIES.filter((quality) => list.includes(quality))
-  return out.length ? out : (['320k', '128k'] as Quality[])
 }
 
 function cacheKeyFor(song: Song, quality: Quality): string {
@@ -173,60 +168,80 @@ async function downloadToFile(url: string, target: string, maxBytes: number): Pr
 /** 超过总容量时按最久未访问顺序删除 */
 export function enforceLimit(): void {
   const cfg = getAppConfig().cache
-  const max = cfg.maxBytes
-  let rows: CacheRow[]
   try {
-    rows = sql('SELECT * FROM audio_cache ORDER BY last_access_at ASC').all() as unknown as CacheRow[]
-  } catch {
-    return
-  }
-  let total = rows.reduce((sum, row) => sum + (Number(row.bytes) || 0), 0)
-  for (const row of rows) {
-    if (total <= max) break
-    try {
-      fs.unlinkSync(filePathOf(row.file_name))
-    } catch {
-      /* 文件可能已不存在 */
+    const max = Math.max(0, cfg.maxBytes - lyricCache.stats().bytes)
+    let total = Number(sql('SELECT COALESCE(SUM(bytes), 0) AS bytes FROM audio_cache').get()!.bytes)
+    if (total <= max) return
+    const rows = sql('SELECT * FROM audio_cache ORDER BY last_access_at ASC').all() as unknown as CacheRow[]
+    for (const row of rows) {
+      if (total <= max) break
+      try {
+        fs.unlinkSync(filePathOf(row.file_name))
+      } catch {
+        /* 文件可能已不存在 */
+      }
+      deleteRow(row.cache_key)
+      total -= Number(row.bytes) || 0
     }
-    deleteRow(row.cache_key)
-    total -= Number(row.bytes) || 0
+  } catch (err) {
+    log.warn('检查缓存容量失败：', err instanceof Error ? err.message : String(err))
   }
 }
 
-/** 缓存一首歌（已有则直接返回） */
-export async function ensure(song: Song, requested?: Quality[]): Promise<CachedAudio | null> {
+/** Cache each available quality independently; one existing file cannot skip the others. */
+export async function ensure(song: Song): Promise<CachedAudio[]> {
+  const epoch = generation
+  const result: CachedAudio[] = []
+  for (const quality of QUALITIES) {
+    if (epoch !== generation || !getAppConfig().cache.enabled) break
+    const cached = await ensureQuality(song, quality)
+    if (cached) result.push(cached)
+  }
+  return result
+}
+
+async function ensureQuality(song: Song, requested: Quality): Promise<CachedAudio | null> {
   const cfg = getAppConfig().cache
   if (!cfg.enabled) return null
   ensureDir()
-  const qualities = normalizeQualities(requested ?? cfg.qualities)
-  const existing = lookup(song, qualities)
+  const existing = lookup(song, [requested])
   if (existing) return existing
 
-  const key = songKey(song) + '|' + qualities.join(',')
+  const epoch = generation
+  // Global identity intentionally excludes user and playlist IDs.
+  const key = cacheKeyFor(song, requested) + '|' + epoch
   const running = inflight.get(key)
   if (running) return running
 
   const task = (async (): Promise<CachedAudio | null> => {
     let resolved: { url: string; quality: Quality }
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
       resolved = await Promise.race([
-        sourceManager.getMusicUrl(song, qualities),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('解析音源超时')), 45000)),
+        // Old clients may only list 128k; probe all source-supported qualities.
+        sourceManager.getMusicUrl({ ...song, qualities: [...QUALITIES] }, [requested], undefined, true),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('解析音源超时')), 45000) }),
       ])
     } catch (err) {
-      log.warn('缓存解析音源失败：' + song.name + ' · ' + (err instanceof Error ? err.message : String(err)))
+      log.debug('缓存音质不可用：' + song.name + ' (' + requested + ') · ' + (err instanceof Error ? err.message : String(err)))
       return null
+    } finally {
+      clearTimeout(timer)
     }
-    if (!resolved.url) return null
+    if (!resolved.url || resolved.quality !== requested || epoch !== generation || !getAppConfig().cache.enabled) return null
     const quality = resolved.quality
     const cacheKeyValue = cacheKeyFor(song, quality)
     const fileName = cacheKeyValue + '.' + extensionOf(quality)
     const target = filePathOf(fileName)
-    const temp = target + '.part'
+    const temp = target + '.' + epoch + '.part'
 
     try {
       const bytes = await downloadToFile(resolved.url, temp, Math.min(MAX_FILE_BYTES, cfg.maxBytes))
       if (bytes <= 0) throw new Error('音频为空')
+      if (epoch !== generation || !getAppConfig().cache.enabled) {
+        fs.unlinkSync(temp)
+        return null
+      }
       fs.renameSync(temp, target)
       if (bytes > cfg.maxBytes) {
         fs.unlinkSync(target)
@@ -261,14 +276,21 @@ export async function ensure(song: Song, requested?: Quality[]): Promise<CachedA
 }
 
 /** 歌单 / 收藏变更后异步预热缓存 */
-export function warm(song: Song): void {
+export function warm(song: Song, manual = false): boolean {
   const cfg = getAppConfig().cache
-  if (!cfg.enabled || !cfg.warmCollections) return
+  if (!cfg.enabled || (!manual && !cfg.warmCollections)) return false
   const key = songKey(song)
-  if (warmQueued.has(key)) return
-  warmQueued.add(key)
-  warmQueue.push(song)
+  const queued = warmQueued.get(key)
+  if (queued) {
+    // Different clients can supply different quality metadata for the same track.
+    queued.qualities = [...new Set([...queued.qualities, ...(Array.isArray(song.qualities) ? song.qualities : [])])]
+    return false
+  }
+  const copy = { ...song, qualities: Array.isArray(song.qualities) ? [...song.qualities] : [] }
+  warmQueued.set(key, copy)
+  warmQueue.push(copy)
   pumpWarm()
+  return true
 }
 
 function pumpWarm(): void {
@@ -276,17 +298,17 @@ function pumpWarm(): void {
     const song = warmQueue.shift()
     if (!song) break
     warmActive++
-    void ensure(song)
-      .catch(() => undefined)
+    void Promise.allSettled([ensure(song), lyricCache.get(song)])
       .finally(() => {
-        warmQueued.delete(songKey(song))
+        if (warmQueued.get(songKey(song)) === song) warmQueued.delete(songKey(song))
+        enforceLimit()
         warmActive--
         pumpWarm()
       })
   }
 }
 
-export function stats(): { enabled: boolean; count: number; bytes: number; maxBytes: number; dir: string; warming: number } {
+export function stats(): { enabled: boolean; count: number; bytes: number; maxBytes: number; dir: string; warming: number; lyricCount: number; lyricBytes: number } {
   let count = 0
   let bytes = 0
   try {
@@ -299,10 +321,13 @@ export function stats(): { enabled: boolean; count: number; bytes: number; maxBy
     /* ignore */
   }
   const cfg = getAppConfig().cache
+  const lyrics = lyricCache.stats()
   return {
     enabled: cfg.enabled,
     count,
-    bytes,
+    bytes: bytes + lyrics.bytes,
+    lyricCount: lyrics.count,
+    lyricBytes: lyrics.bytes,
     maxBytes: cfg.maxBytes,
     dir: cacheDir(),
     warming: warmQueue.length + warmActive,
@@ -311,8 +336,12 @@ export function stats(): { enabled: boolean; count: number; bytes: number; maxBy
 
 /** 清空服务端缓存 */
 export function clear(): { removed: number; bytes: number } {
-  let removed = 0
-  let bytes = 0
+  generation++
+  warmQueue.length = 0
+  warmQueued.clear()
+  const lyrics = lyricCache.clear()
+  let removed = lyrics.count
+  let bytes = lyrics.bytes
   try {
     const rows = sql('SELECT * FROM audio_cache').all() as unknown as CacheRow[]
     for (const row of rows) {
@@ -331,31 +360,29 @@ export function clear(): { removed: number; bytes: number } {
   return { removed, bytes }
 }
 
-/** 把现有收藏 / 歌单里的歌曲补进缓存队列（管理员手动触发） */
-export function warmCollections(limit = 200): number {
-  let queued = 0
+/** Queue every unique track across all accounts, merging metadata before work starts. */
+export function warmCollections(manual = true): number {
+  if (!getAppConfig().cache.enabled || (!manual && !getAppConfig().cache.warmCollections)) return 0
+  const songs = new Map<string, Song>()
   try {
-    const rows = getDb()
-      .prepare(
-        `SELECT song_json FROM favorites
-         UNION SELECT song_json FROM playlist_songs
-         LIMIT ?`,
-      )
-      .all(limit) as { song_json: string }[]
+    const rows = getDb().prepare('SELECT song_json FROM favorites UNION ALL SELECT song_json FROM playlist_songs').iterate()
     for (const row of rows) {
       try {
-        const song = JSON.parse(row.song_json) as Song
-        if (song && song.platform && song.songmid) {
-          warm(song)
-          queued++
-        }
-      } catch {
-        /* ignore */
-      }
+        const song = JSON.parse(String(row.song_json)) as Song
+        if (!song || !song.platform || !song.songmid) continue
+        const previous = songs.get(songKey(song))
+        if (previous) previous.qualities = [...new Set([
+          ...(Array.isArray(previous.qualities) ? previous.qualities : []),
+          ...(Array.isArray(song.qualities) ? song.qualities : []),
+        ])]
+        else songs.set(songKey(song), song)
+      } catch { /* Ignore malformed legacy entries. */ }
     }
   } catch (err) {
     log.warn('预热收藏歌单失败：', err instanceof Error ? err.message : String(err))
   }
+  let queued = 0
+  for (const song of songs.values()) if (warm(song, manual)) queued++
   return queued
 }
 
@@ -364,7 +391,12 @@ export async function streamCached(
   req: IncomingMessage,
   res: ServerResponse,
   cacheKeyValue: string,
-  options: { attachment?: string } = {},
+  options: {
+    attachment?: string
+    beforeStream?: (bytes: number) => void
+    beforeChunk?: (bytes: number) => void
+    afterStream?: () => void
+  } = {},
 ): Promise<void> {
   const row = sql('SELECT * FROM audio_cache WHERE cache_key = ?').get(cacheKeyValue) as CacheRow | undefined
   if (!row) {
@@ -391,6 +423,31 @@ export async function streamCached(
     const ascii = options.attachment.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_')
     headers['Content-Disposition'] =
       'attachment; filename="' + ascii + '"; filename*=UTF-8\'\'' + encodeURIComponent(options.attachment)
+  }
+
+  // Download tickets are claimed only after verifying the shared file exists.
+  options.beforeStream?.(stat.size)
+  if (options.beforeChunk) {
+    const stream = fs.createReadStream(file)
+    const controller = new AbortController()
+    const cancel = () => { stream.destroy(); controller.abort() }
+    res.on('close', cancel)
+    res.writeHead(200, { ...headers, 'Accept-Ranges': 'none', 'Content-Length': stat.size })
+    try {
+      for await (const chunk of stream) {
+        if (res.destroyed) break
+        options.beforeChunk(chunk.length)
+        if (!res.write(chunk)) await once(res, 'drain', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45000)]) })
+      }
+    } catch (error) {
+      if (!res.writableEnded) res.destroy(error instanceof Error ? error : undefined)
+    } finally {
+      stream.destroy()
+      res.off('close', cancel)
+      options.afterStream?.()
+      if (!res.writableEnded) res.end()
+    }
+    return
   }
 
   const range = options.attachment ? undefined : req.headers.range

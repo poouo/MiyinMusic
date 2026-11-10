@@ -9,19 +9,16 @@ import { useToast } from '../state/toast'
 export function useDownload() {
   const auth = useAuth()
   const authModal = useAuthModal()
-  const { downloadEnabled, allowedQualities } = useAppConfig()
+  const { downloadEnabled, allowedQualities, refresh } = useAppConfig()
   const toast = useToast()
 
-  const canDownload = !!auth.user && downloadEnabled
+  const canDownload = downloadEnabled
 
   const download = useCallback(
     async (song: Song) => {
-      if (!auth.user) {
-        authModal.open('login', '登录后才能下载歌曲')
-        return
-      }
       if (!downloadEnabled) {
-        toast.error('管理员已关闭下载功能')
+        if (!auth.user) authModal.open('login', '当前游客下载权限受限，请登录')
+        else toast.error('当前账号没有下载权限')
         return
       }
       toast.show('正在准备下载…')
@@ -35,11 +32,12 @@ export function useDownload() {
         anchor.click()
         anchor.remove()
         toast.success('开始下载 · ' + QUALITY_NAMES[result.quality])
+        void refresh()
       } catch (err) {
         toast.error((err as Error).message)
       }
     },
-    [auth.user, authModal, downloadEnabled, toast],
+    [auth.user, authModal, downloadEnabled, toast, refresh],
   )
 
   return { download, canDownload, downloadEnabled, allowedQualities }

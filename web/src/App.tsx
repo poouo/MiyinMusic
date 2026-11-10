@@ -108,8 +108,8 @@ export default function App() {
   return (
     <SettingsProvider>
       <ToastProvider>
-        <AppConfigProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <AppConfigProvider>
             <AuthModalProvider>
               <LibraryProvider>
                 <PlayerProvider>
@@ -117,8 +117,8 @@ export default function App() {
                 </PlayerProvider>
               </LibraryProvider>
             </AuthModalProvider>
-          </AuthProvider>
-        </AppConfigProvider>
+          </AppConfigProvider>
+        </AuthProvider>
       </ToastProvider>
     </SettingsProvider>
   )
