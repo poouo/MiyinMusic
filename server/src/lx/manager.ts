@@ -4,6 +4,7 @@ import { config } from '../config.js'
 import { logger } from '../log.js'
 import { HttpError } from '../errors.js'
 import { assertPublicUrl } from '../stream.js'
+import { probeAudio, assertComplete, assertQuality } from '../media-validation.js'
 import { request } from '../http-client.js'
 import type { MusicUrlResult, Platform, Quality, Song } from '../types.js'
 import { PLATFORM_NAMES, PLATFORMS, QUALITIES } from '../types.js'
@@ -94,6 +95,7 @@ function toError(err: unknown): Error {
 }
 
 export class SourceManager {
+  constructor(private readonly probe = probeAudio) {}
   private sources = new Map<string, SourceState>()
   private loading = new Map<string, Promise<void>>()
   private urlCache = new Map<string, { value: MusicUrlResult; expire: number }>()
@@ -552,9 +554,10 @@ export class SourceManager {
     preferred: Quality[] = QUALITIES,
     onlySourceId?: string,
     strictQualities = false,
+    excludedSourceIds: string[] = [],
   ): Promise<MusicUrlResult> {
     const key =
-      this.revision + ':' + song.platform + '_' + song.songmid + '_' + preferred.join(',') + '_' + (onlySourceId ?? '*') + (strictQualities ? '!s' : '')
+      this.revision + ':' + song.platform + '_' + song.songmid + '_' + preferred.join(',') + '_' + (onlySourceId ?? '*') + (strictQualities ? '!s' : '') + ':' + [...excludedSourceIds].sort().join(',') + ':' + song.interval
     const revision = this.revision
     const cached = this.urlCache.get(key)
     if (cached && cached.expire > Date.now()) return cached.value
@@ -562,7 +565,7 @@ export class SourceManager {
     const inflight = this.pending.get(key)
     if (inflight) return inflight
 
-    const task = this.resolveUrl(song, preferred, onlySourceId, strictQualities)
+    const task = this.resolveUrl(song, preferred, onlySourceId, strictQualities, excludedSourceIds)
       .then((result) => {
         if (revision === this.revision) this.urlCache.set(key, { value: result, expire: Date.now() + 4 * 60_000 })
         return result
@@ -598,8 +601,9 @@ export class SourceManager {
     preferred: Quality[],
     onlySourceId?: string,
     strictQualities = false,
+    excludedSourceIds: string[] = [],
   ): Promise<MusicUrlResult> {
-    let candidates = this.candidates(song.platform)
+    let candidates = this.candidates(song.platform).filter(c => !excludedSourceIds.includes(c.id))
     if (onlySourceId) candidates = candidates.filter((c) => c.id === onlySourceId)
     if (!candidates.length) {
       throw new Error('没有可用的音源支持 ' + (PLATFORM_NAMES[song.platform] ?? song.platform) + '，请到「设置 - 音源」启用或刷新')
@@ -649,12 +653,15 @@ export class SourceManager {
                 }
                 // Invalid/private/unresolvable addresses must not win the race.
                 await assertPublicUrl(value)
+                const audio = await this.probe(value, signal)
+                assertComplete(audio, song.interval)
+                assertQuality(audio, quality)
                 signal.throwIfAborted()
                 source.stats.ok++
                 source.stats.lastOkAt = Date.now()
                 source.stats.lastError = undefined
                 this.unhealthy.delete(healthKey)
-                return { url: value, quality, sourceId: source.id, sourceName: source.meta.name ?? source.name, platform: song.platform }
+                return { url: value, quality, sourceId: source.id, sourceName: source.meta.name ?? source.name, platform: song.platform, duration: audio.duration }
               })
             } catch (error) {
               if (!started || (signal.aborted && signal.reason?.name === 'AbortError')) throw error

@@ -6,6 +6,7 @@ import { formatDuration, parseLyric, parseTranslation } from '../lib/format'
 import { songKey } from '../lib/types'
 import { Cover } from './Cover'
 import { QualityMenu } from './QualityMenu'
+import { SourceMenu } from './SourceMenu'
 import { QueueList } from './QueueList'
 import { Modal } from './Modal'
 import { VolumeControl } from './VolumeControl'
@@ -201,6 +202,7 @@ export function NowPlaying({ open, onClose }: Props) {
               placement="top"
               compact
             />
+            <SourceMenu />
           </div>
           <div className="np__volume"><VolumeControl /></div>
         </div>

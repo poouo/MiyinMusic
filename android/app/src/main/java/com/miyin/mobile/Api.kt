@@ -269,10 +269,13 @@ class ApiClient(context: Context) {
     suspend fun lyric(song: Song): LyricResult =
         post<LyricRequest, LyricResponse>("/api/lyric", LyricRequest(song)).lyric
 
-    suspend fun playUrl(song: Song, qualities: List<String> = PlaybackQuality.order(AppPrefs(appContext).preferredQuality)): UrlResult =
+    suspend fun sources(): List<PlaybackSource> = get<SourcesResponse>("/api/sources").sources
+
+    suspend fun playUrl(song: Song, qualities: List<String> = PlaybackQuality.order(AppPrefs(appContext).preferredQuality), sourceId: String? = null,
+        excludedSourceIds: List<String> = emptyList()): UrlResult =
         post<UrlRequest, UrlResult>(
             "/api/url",
-            UrlRequest(song, qualities)
+            UrlRequest(song, qualities, sourceId, excludedSourceIds)
         )
 
     fun absoluteUrl(url: String): String =

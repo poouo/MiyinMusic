@@ -777,7 +777,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
 
   // ---------- 获取播放地址 ----------
   if (pathname === '/api/url' && method === 'POST') {
-    const body = await readJson<{ song?: unknown; qualities?: unknown; sourceId?: string; direct?: boolean }>(req)
+    const body = await readJson<{ song?: unknown; qualities?: unknown; sourceId?: string; excludedSourceIds?: unknown; direct?: boolean }>(req)
+    const excluded = Array.isArray(body.excludedSourceIds) ? body.excludedSourceIds.filter((id): id is string => typeof id === 'string').slice(0, 30) : []
+    if (body.sourceId != null && typeof body.sourceId !== 'string') throw new HttpError(400, '音源参数无效')
     enforce('url', rateKeyFor(req))
     const song = library.sanitizeSong(body.song)
     const viewer = currentUser(req)
@@ -788,7 +790,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     const subject = membership.quotaSubject(req, viewer)
 
     // A lower-quality cache is a fallback, not a reason to skip the requested quality.
-    const cached = audioCache.lookup(song, allowed)
+    const cached = body.sourceId || excluded.length ? null : await audioCache.lookupValidated(song, allowed)
     const sendCached = () => {
       if (!cached) return
       sendJson(res, 200, {
@@ -796,6 +798,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         quality: cached.quality,
         platform: song.platform,
         cached: true,
+        sourceId: cached.sourceId,
+        sourceName: cached.sourceName,
+        duration: cached.duration,
       })
     }
     if (cached?.quality === allowed[0]) { sendCached(); return true }
@@ -806,7 +811,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     let result: Awaited<ReturnType<typeof sourceManager.getMusicUrl>>
     try {
       result = await withDeadline(
-        sourceManager.getMusicUrl(song, preferred, body.sourceId, true),
+        sourceManager.getMusicUrl(song, preferred, body.sourceId, true, excluded),
         12000,
         '获取播放地址超时，请稍后重试或换一首',
       )
@@ -821,6 +826,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       quality: result.quality,
       platform: result.platform,
       cached: false,
+      sourceId: result.sourceId,
+      sourceName: result.sourceName,
+      duration: result.duration,
     })
     return true
   }
@@ -860,7 +868,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     const body = await readJson<{ song?: unknown }>(req)
     const song = library.sanitizeSong(body.song)
     const allowed = qualityOrder([...policy.downloadQualities].reverse(), true)
-    const cached = audioCache.lookup(song, allowed)
+    const cached = await audioCache.lookupValidated(song, allowed)
     const result = cached ?? await withDeadline(
       sourceManager.getMusicUrl(song, allowed, undefined, true), 20000, '下载地址获取超时，请稍后重试',
     )

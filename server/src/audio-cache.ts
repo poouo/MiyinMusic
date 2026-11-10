@@ -10,6 +10,7 @@ import { getDb, sql } from './db.js'
 import { getAppConfig } from './app-config.js'
 import { sourceManager } from './lx/manager.js'
 import { assertPublicUrl } from './stream.js'
+import { inspectFile, assertComplete, assertQuality, fetchAudio } from './media-validation.js'
 import { logger } from './log.js'
 import * as lyricCache from './lyric-cache.js'
 import { QUALITIES, songKey, type Quality, type Song } from './types.js'
@@ -40,6 +41,9 @@ interface CacheRow {
 }
 
 export interface CachedAudio {
+  sourceId?: string
+  sourceName?: string
+  duration?: number
   key: string
   quality: Quality
   bytes: number
@@ -83,7 +87,11 @@ function extensionOf(quality: Quality): string {
 }
 
 function rowToCached(row: CacheRow): CachedAudio {
+  const checked = validation(row)
   return {
+    sourceId: checked?.source_id || undefined,
+    sourceName: checked?.source_name || '服务端缓存',
+    duration: checked?.duration,
     key: row.cache_key,
     quality: row.quality as Quality,
     bytes: Number(row.bytes) || 0,
@@ -94,9 +102,65 @@ function rowToCached(row: CacheRow): CachedAudio {
 
 function deleteRow(cacheKeyValue: string): void {
   try {
+    sql('DELETE FROM audio_validation WHERE cache_key = ?').run(cacheKeyValue)
     sql('DELETE FROM audio_cache WHERE cache_key = ?').run(cacheKeyValue)
   } catch {
     /* ignore */
+  }
+}
+
+interface Validation { duration: number; mime: string; source_id: string; source_name: string }
+function validation(row: CacheRow): Validation | undefined {
+  let stat: fs.Stats
+  try { stat = fs.statSync(filePathOf(row.file_name)) } catch { return undefined }
+  return sql('SELECT * FROM audio_validation WHERE cache_key = ? AND bytes = ? AND mtime = ?')
+    .get(row.cache_key, stat.size, stat.mtimeMs) as unknown as Validation | undefined
+}
+const validating = new Map<string, Promise<void>>()
+
+/** Verify legacy files on first access, then reuse metadata until the file changes. */
+export async function lookupValidated(song: Song, allowed: Quality[]): Promise<CachedAudio | null> {
+  for (;;) {
+    const candidate = lookup(song, allowed)
+    if (!candidate) return null
+    const row = sql('SELECT * FROM audio_cache WHERE cache_key = ?').get(candidate.key) as unknown as CacheRow
+    const epoch = generation
+    const identity = candidate.key + ':' + epoch
+    let task = validating.get(identity)
+    if (!task) {
+      task = (async () => {
+        try {
+          let checked = validation(row)
+          if (!checked) {
+            const stat = fs.statSync(filePathOf(row.file_name))
+            if (stat.size !== Number(row.bytes)) throw new Error('缓存文件大小不完整')
+            const info = await inspectFile(filePathOf(row.file_name))
+            assertComplete(info, song.interval, true)
+            assertQuality(info, row.quality)
+            if (epoch !== generation) return
+            sql('INSERT OR REPLACE INTO audio_validation (cache_key, bytes, mtime, duration, mime) VALUES (?, ?, ?, ?, ?)')
+              .run(row.cache_key, stat.size, stat.mtimeMs, info.duration!, info.mime ?? 'application/octet-stream')
+            checked = validation(row)
+          }
+          assertComplete({ duration: checked?.duration }, song.interval, true)
+        } catch (error) {
+          if (epoch !== generation) return
+          deleteRow(row.cache_key)
+          try { fs.unlinkSync(filePathOf(row.file_name)) } catch { /* already removed */ }
+          log.warn('剔除异常缓存：' + song.name + ' · ' + (error instanceof Error ? error.message : '音频校验失败'))
+        }
+      })().finally(() => validating.delete(identity))
+      validating.set(identity, task)
+    }
+    await task
+    if (epoch !== generation) return null
+    if (sql('SELECT cache_key FROM audio_cache WHERE cache_key = ?').get(candidate.key)) {
+      // Recheck against this caller's metadata after a shared validation.
+      const checked = validation(row)
+      try { assertComplete({ duration: checked?.duration }, song.interval, true) }
+      catch { deleteRow(row.cache_key); try { fs.unlinkSync(filePathOf(row.file_name)) } catch {}; continue }
+      return rowToCached(row)
+    }
   }
 }
 
@@ -138,10 +202,9 @@ async function downloadToFile(url: string, target: string, maxBytes: number): Pr
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 120000)
   try {
-    const response = await fetch(safe, {
-      headers: { 'User-Agent': UA, Accept: '*/*' },
+    const response = await fetchAudio(safe.href, {
+      headers: { 'User-Agent': UA, Accept: '*/*', 'Accept-Encoding': 'identity' },
       signal: controller.signal,
-      redirect: 'follow',
     })
     if (!response.ok) throw new Error('音频下载失败 HTTP ' + response.status)
     const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
@@ -159,6 +222,7 @@ async function downloadToFile(url: string, target: string, maxBytes: number): Pr
       },
     })
     await pipeline(Readable.fromWeb(response.body as never), counter, fs.createWriteStream(target))
+    if (declared && declared !== received) throw new Error('音频下载不完整')
     return received
   } finally {
     clearTimeout(timer)
@@ -204,7 +268,7 @@ async function ensureQuality(song: Song, requested: Quality): Promise<CachedAudi
   const cfg = getAppConfig().cache
   if (!cfg.enabled) return null
   ensureDir()
-  const existing = lookup(song, [requested])
+  const existing = await lookupValidated(song, [requested])
   if (existing) return existing
 
   const epoch = generation
@@ -214,59 +278,74 @@ async function ensureQuality(song: Song, requested: Quality): Promise<CachedAudi
   if (running) return running
 
   const task = (async (): Promise<CachedAudio | null> => {
-    let resolved: { url: string; quality: Quality }
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      resolved = await Promise.race([
-        // Old clients may only list 128k; probe all source-supported qualities.
-        sourceManager.getMusicUrl({ ...song, qualities: [...QUALITIES] }, [requested], undefined, true),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('解析音源超时')), 45000) }),
-      ])
-    } catch (err) {
-      log.debug('缓存音质不可用：' + song.name + ' (' + requested + ') · ' + (err instanceof Error ? err.message : String(err)))
-      return null
-    } finally {
-      clearTimeout(timer)
-    }
-    if (!resolved.url || resolved.quality !== requested || epoch !== generation || !getAppConfig().cache.enabled) return null
-    const quality = resolved.quality
-    const cacheKeyValue = cacheKeyFor(song, quality)
-    const fileName = cacheKeyValue + '.' + extensionOf(quality)
-    const target = filePathOf(fileName)
-    const temp = target + '.' + epoch + '.part'
-
-    try {
-      const bytes = await downloadToFile(resolved.url, temp, Math.min(MAX_FILE_BYTES, cfg.maxBytes))
-      if (bytes <= 0) throw new Error('音频为空')
-      if (epoch !== generation || !getAppConfig().cache.enabled) {
-        fs.unlinkSync(temp)
-        return null
-      }
-      fs.renameSync(temp, target)
-      if (bytes > cfg.maxBytes) {
-        fs.unlinkSync(target)
-        return null
-      }
-      const now = Date.now()
-      sql(
-        `INSERT INTO audio_cache
-          (cache_key, song_key, platform, songmid, quality, file_name, bytes, created_at, last_access_at, hits)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-         ON CONFLICT(cache_key) DO UPDATE SET bytes = excluded.bytes, created_at = excluded.created_at, last_access_at = excluded.last_access_at`,
-      ).run(cacheKeyValue, songKey(song), song.platform, song.songmid, quality, fileName, bytes, now, now)
-      enforceLimit()
-      if (!fileExists(fileName)) return null
-      log.info('已缓存：' + song.singer + ' - ' + song.name + ' (' + quality + ', ' + Math.round(bytes / 1024) + 'KB)')
-      return { key: cacheKeyValue, quality, bytes, platform: song.platform, songmid: song.songmid }
-    } catch (err) {
+    const excluded: string[] = []
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let resolved: { url: string; quality: Quality; sourceId?: string; sourceName?: string }
+      let timer: ReturnType<typeof setTimeout> | undefined
       try {
-        fs.unlinkSync(temp)
-      } catch {
-        /* ignore */
+        resolved = await Promise.race([
+          // Old clients may only list 128k; probe all source-supported qualities.
+          sourceManager.getMusicUrl({ ...song, qualities: [...QUALITIES] }, [requested], undefined, true, excluded),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('解析音源超时')), 45000) }),
+        ])
+      } catch (err) {
+        log.debug('缓存音质不可用：' + song.name + ' (' + requested + ') · ' + (err instanceof Error ? err.message : String(err)))
+        return null
+      } finally {
+        clearTimeout(timer)
       }
-      log.warn('缓存下载失败：' + song.name + ' · ' + (err instanceof Error ? err.message : String(err)))
-      return null
+      if (!resolved.url || resolved.quality !== requested || epoch !== generation || !getAppConfig().cache.enabled) return null
+      const quality = resolved.quality
+      const cacheKeyValue = cacheKeyFor(song, quality)
+      const fileName = cacheKeyValue + '.' + extensionOf(quality)
+      const target = filePathOf(fileName)
+      const temp = target + '.' + epoch + '.part'
+
+      try {
+        const bytes = await downloadToFile(resolved.url, temp, Math.min(MAX_FILE_BYTES, cfg.maxBytes))
+        if (bytes <= 0) throw new Error('音频为空')
+        const info = await inspectFile(temp)
+        assertComplete(info, song.interval, true)
+        assertQuality(info, quality)
+        if (epoch !== generation || !getAppConfig().cache.enabled) {
+          fs.unlinkSync(temp)
+          return null
+        }
+        fs.renameSync(temp, target)
+        if (bytes > cfg.maxBytes) {
+          fs.unlinkSync(target)
+          return null
+        }
+        const now = Date.now()
+        sql(
+          `INSERT INTO audio_cache
+            (cache_key, song_key, platform, songmid, quality, file_name, bytes, created_at, last_access_at, hits)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+           ON CONFLICT(cache_key) DO UPDATE SET bytes = excluded.bytes, created_at = excluded.created_at, last_access_at = excluded.last_access_at`,
+        ).run(cacheKeyValue, songKey(song), song.platform, song.songmid, quality, fileName, bytes, now, now)
+        sql(`INSERT OR REPLACE INTO audio_validation (cache_key, bytes, mtime, duration, mime, source_id, source_name) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(cacheKeyValue, bytes, fs.statSync(target).mtimeMs, info.duration!, info.mime ?? 'application/octet-stream', resolved.sourceId ?? null, resolved.sourceName ?? null)
+        enforceLimit()
+        if (!fileExists(fileName)) return null
+        log.info('已缓存：' + song.singer + ' - ' + song.name + ' (' + quality + ', ' + Math.round(bytes / 1024) + 'KB)')
+        return { key: cacheKeyValue, quality, bytes, platform: song.platform, songmid: song.songmid, duration: info.duration, sourceId: resolved.sourceId, sourceName: resolved.sourceName }
+      } catch (err) {
+        try {
+          fs.unlinkSync(temp)
+        } catch {
+          /* ignore */
+        }
+        log.warn('缓存下载失败：' + song.name + ' · ' + (err instanceof Error ? err.message : String(err)))
+        // Metadata may be at the end of a file. If the complete download exposes
+        // a preview or a broken response, continue with another source.
+        if (resolved.sourceId && !excluded.includes(resolved.sourceId) && epoch === generation && getAppConfig().cache.enabled) {
+          excluded.push(resolved.sourceId)
+          continue
+        }
+        return null
+      }
     }
+    return null
   })().finally(() => {
     inflight.delete(key)
   })
@@ -353,7 +432,7 @@ export function clear(): { removed: number; bytes: number } {
       removed++
       bytes += Number(row.bytes) || 0
     }
-    getDb().exec('DELETE FROM audio_cache')
+    getDb().exec('DELETE FROM audio_cache; DELETE FROM audio_validation')
   } catch (err) {
     log.warn('清空缓存失败：', err instanceof Error ? err.message : String(err))
   }
@@ -413,9 +492,14 @@ export async function streamCached(
     return
   }
   touch(row)
+  const checked = validation(row)
+  if (!checked) {
+    res.writeHead(410, { 'Content-Type': 'text/plain; charset=utf-8' }).end('缓存需要重新校验，请重新获取播放地址')
+    return
+  }
   const kind = row.file_name.endsWith('.flac') ? 'flac' : 'mp3'
   const headers: Record<string, string | number> = {
-    'Content-Type': kind === 'flac' ? 'audio/flac' : 'audio/mpeg',
+    'Content-Type': checked.mime || (kind === 'flac' ? 'audio/flac' : 'audio/mpeg'),
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=0',
   }

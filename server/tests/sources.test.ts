@@ -8,6 +8,8 @@ import { resolvePrioritized, ResolutionPool } from '../src/lx/resolve.js'
 import { SourceRuntime } from '../src/lx/sandbox.js'
 import type { LxRequestPayload } from '../src/lx/sandbox.js'
 import type { Song } from '../src/types.js'
+import { probeAudio, assertComplete, assertQuality } from '../src/media-validation.js'
+import { wav } from './audio-fixture.js'
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'miyin-sources-test-'))
 process.env.MIYIN_DATA_DIR = temp
@@ -23,8 +25,8 @@ const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, re
   const timer = setTimeout(() => { signal.removeEventListener('abort', cancel); resolve() }, ms)
   signal.addEventListener('abort', cancel, { once: true })
 })
-function fixture(handlers: ((payload: LxRequestPayload, signal: AbortSignal) => Promise<string>)[]) {
-  const manager = new SourceManager()
+function fixture(handlers: ((payload: LxRequestPayload, signal: AbortSignal) => Promise<string>)[], probe: typeof probeAudio = async () => ({ duration: 200 })) {
+  const manager = new SourceManager(probe)
   const sources = new Map(handlers.map((handler, order) => [String(order), {
     id: String(order), name: String(order), kind: 'builtin', enabled: true, order, status: 'ready', meta: {},
     platforms: { tx: { actions: ['musicUrl'], qualitys: ['320k', '128k'] } }, stats: { ok: 0, fail: 0, lastError: undefined as string | undefined },
@@ -165,4 +167,72 @@ test('cancelling one sandbox action aborts its HTTP request without affecting an
     await rejected; assert.equal(await second, 'ok')
     assert.equal(aborted, true)
   } finally { runtime.dispose(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
+
+test('19-second previews lose to complete sources, including after another caller supplied unknown duration', async () => {
+  const { manager } = fixture([async () => goodUrl + '?preview', async () => goodUrl + '?full'],
+    async url => ({ duration: url.includes('preview') ? 19 : 382 }))
+  const unknown = await manager.getMusicUrl({ ...track, interval: 0 }, ['320k'], undefined, true)
+  assert.equal(unknown.sourceId, '0')
+  const result = await manager.getMusicUrl({ ...track, interval: 382 }, ['320k'], undefined, true)
+  assert.equal(result.sourceId, '1'); assert.equal(result.duration, 382)
+  await assert.rejects(manager.getMusicUrl({ ...track, interval: 382 }, ['320k'], '0', true), /音频不完整/)
+  const excluded = await manager.getMusicUrl({ ...track, interval: 0 }, ['320k'], undefined, true, ['0'])
+  assert.equal(excluded.sourceId, '1')
+})
+
+test('duration comparison allows real short tracks and rejects mislabeled lossy SQ', () => {
+  assert.doesNotThrow(() => assertComplete({ duration: 19 }, 19, true))
+  assert.doesNotThrow(() => assertComplete({ duration: 196 }, 200, true))
+  assert.throws(() => assertComplete({ duration: 19 }, 382), /音频不完整/)
+  assert.throws(() => assertComplete({}, 382, true), /无法确认/)
+  assert.throws(() => assertQuality({ lossless: false }, 'flac'), /有损/)
+  assert.throws(() => assertQuality({ lossless: true, bits: 16 }, 'flac24bit'), /Hi-Res/)
+})
+
+test('media range probes detect duration without downloading the complete song and validate redirects', async t => {
+  const data = wav(382)
+  let delivered = 0
+  t.mock.method(globalThis, 'fetch', async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/redirect') return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private' } })
+    const requested = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range')!)!
+    const start = Number(requested[1]), end = Math.min(Number(requested[2]), data.length - 1)
+    const chunk = data.subarray(start, end + 1); delivered += chunk.length
+    return new Response(chunk, { status: 206, headers: { 'content-type': 'audio/wav', 'content-range': `bytes ${start}-${end}/${data.length}` } })
+  })
+  const info = await probeAudio('https://1.1.1.1/complete.wav', new AbortController().signal)
+  assert.equal(info.duration, 382); assert.equal(info.mime, 'audio/wav')
+  assert.ok(delivered < data.length / 2)
+  await probeAudio('https://1.1.1.1/complete.wav', new AbortController().signal)
+  assert.ok(delivered < data.length / 2, 'verified metadata is reused')
+  await assert.rejects(probeAudio('https://1.1.1.1/redirect', new AbortController().signal))
+})
+
+test('CBR MP3 range duration uses full file length instead of the small probe buffer', async t => {
+  const data = Buffer.alloc(417 * 10000)
+  for (let offset = 0; offset < data.length; offset += 417) data.set([0xff, 0xfb, 0x90, 0], offset)
+  t.mock.method(globalThis, 'fetch', async () => new Response(data.subarray(0, 192 * 1024), {
+    status: 206, headers: { 'content-range': `bytes 0-${192 * 1024 - 1}/${data.length}`, 'content-type': 'audio/mpeg' },
+  }))
+  const info = await probeAudio('https://1.1.1.1/cbr.mp3', new AbortController().signal)
+  assert.ok(info.duration && info.duration > 250 && info.duration < 270, JSON.stringify(info))
+  assert.equal(info.lossless, false)
+})
+
+test('MP4 metadata after the audio payload is read with a second bounded range', async t => {
+  const data = Buffer.alloc(400000 + 132)
+  data.writeUInt32BE(24); data.write('ftypM4A ', 4)
+  data.writeUInt32BE(400000 - 24, 24); data.write('mdat', 28)
+  data.writeUInt32BE(132, 400000); data.write('moov', 400004)
+  data.writeUInt32BE(124, 400008); data.write('mvhd', 400012)
+  data.writeUInt32BE(600, 400028); data.writeUInt32BE(382 * 600, 400032)
+  const ranges: number[] = []
+  t.mock.method(globalThis, 'fetch', async (_url, init?: RequestInit) => {
+    const start = Number(new Headers(init?.headers).get('range')!.match(/bytes=(\d+)/)![1]); ranges.push(start)
+    const end = Math.min(start + 192 * 1024, data.length)
+    return new Response(data.subarray(start, end), { status: 206, headers: { 'content-range': `bytes ${start}-${end - 1}/${data.length}` } })
+  })
+  const info = await probeAudio('https://1.1.1.1/tail.m4a', new AbortController().signal)
+  assert.equal(info.duration, 382); assert.deepEqual(ranges, [0, 400000])
 })

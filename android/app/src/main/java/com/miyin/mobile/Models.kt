@@ -117,14 +117,26 @@ data class UrlResult(
     @SerialName("playUrl") val playUrl: String = "",
     val quality: String = "",
     val platform: String = "",
-    @SerialName("sourceName") val sourceName: String = ""
+    @SerialName("sourceName") val sourceName: String = "",
+    val sourceId: String = "",
+    val cached: Boolean = false
 )
 
 @Serializable
 data class UrlRequest(
     val song: Song,
-    val qualities: List<String> = listOf("320k", "128k")
+    val qualities: List<String> = listOf("320k", "128k"),
+    val sourceId: String? = null,
+    val excludedSourceIds: List<String> = emptyList()
 )
+
+@Serializable
+data class PlaybackSource(val id: String = "", val name: String = "", val enabled: Boolean = false,
+    val status: String = "", val platforms: List<SourcePlatform> = emptyList())
+@Serializable
+data class SourcePlatform(val platform: String = "", val actions: List<String> = emptyList(), val qualitys: List<String> = emptyList())
+@Serializable
+data class SourcesResponse(val sources: List<PlaybackSource> = emptyList())
 
 @Serializable
 data class User(

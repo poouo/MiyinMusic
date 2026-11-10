@@ -10,6 +10,7 @@ import { Cover } from './Cover'
 import { Modal } from './Modal'
 import { QueueList } from './QueueList'
 import { QualityMenu } from './QualityMenu'
+import { SourceMenu } from './SourceMenu'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -129,6 +130,7 @@ export function PlayerBar({ onOpenNowPlaying }: { onOpenNowPlaying: () => void }
             </button>
           ) : null}
           <QualityMenu value={player.quality} actual={player.actualQuality} onChange={player.setQuality} available={current.qualities} compact />
+          <SourceMenu />
           <button className="icon-btn" title="播放队列" onClick={() => setQueueOpen(true)}>
             <ListMusicIcon size={17} />
           </button>

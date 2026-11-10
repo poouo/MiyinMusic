@@ -97,6 +97,7 @@ export interface LyricResult {
 }
 
 export interface MusicUrlResult {
+  duration?: number
   url: string
   quality: Quality
   sourceId: string

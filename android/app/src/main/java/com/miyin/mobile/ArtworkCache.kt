@@ -38,7 +38,7 @@ class ArtworkCache private constructor(context: Context) {
     @Volatile private var generation = 0
     private fun key(url: String) = MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it) }
     private fun file(url: String) = File(folder, key(url) + ".img")
-    fun entry(url: String): StateFlow<Entry?> = entries.getOrPut(url) {
+    fun entry(url: String): StateFlow<Entry?> = entries.computeIfAbsent(url) {
         val file = file(url)
         MutableStateFlow(if (file.isFile) Entry(file, file.lastModified()) else null)
     }
@@ -90,7 +90,7 @@ class ArtworkCache private constructor(context: Context) {
                     val output = atomic.startWrite()
                     try { output.write(bytes); atomic.finishWrite(output) }
                     catch (e: Exception) { atomic.failWrite(output); throw e }
-                    entries.getOrPut(url) { MutableStateFlow(null) }.value = Entry(destination, System.nanoTime())
+                    entries.computeIfAbsent(url) { MutableStateFlow(null) }.value = Entry(destination, destination.lastModified())
                 }
                 validators.edit().putString(id + ":etag", response.header("ETag"))
                     .putString(id + ":modified", response.header("Last-Modified")).apply()

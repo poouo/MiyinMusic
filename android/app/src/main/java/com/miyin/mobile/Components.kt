@@ -37,6 +37,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.painter.Painter
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
 
@@ -69,15 +73,25 @@ fun CoverImage(
             val artwork = remember(context) { ArtworkCache.get(context) }
             val cached by remember(image, artwork) { artwork.entry(image) }.collectAsState()
             LaunchedEffect(image) { artwork.warm(listOf(image)) }
+            // The snapshot loader owns network requests. Keep the last decoded
+            // painter visible while a changed snapshot is being decoded.
+            var displayed by remember(image) { mutableStateOf<Painter?>(null) }
+            // AsyncImage still resolves the display bounds, so list covers are
+            // decoded at thumbnail size instead of retaining full-size bitmaps.
             AsyncImage(
                 model = remember(image, context, cached) {
-                    ImageRequest.Builder(context).data(cached?.file ?: image)
-                        .memoryCacheKey(if (cached != null) image + ":" + cached!!.version else image).crossfade(false).build()
+                    ImageRequest.Builder(context).data(cached?.file ?: image.takeIf { it.startsWith("data:") })
+                        .memoryCacheKey(image + ":" + cached?.version).crossfade(false).build()
                 },
+                onSuccess = { displayed = it.painter },
+                alpha = 0f,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize()
             )
+            displayed?.let { painter ->
+                Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+            }
         }
     }
 }

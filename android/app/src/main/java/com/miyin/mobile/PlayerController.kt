@@ -48,6 +48,12 @@ class PlayerController(
     private var requestedQualities = emptyList<String>()
     private var loadedQuality: String? = null
     private var loadedOffline = false
+    var selectedSourceId by mutableStateOf<String?>(null)
+        private set
+    var sourceName by mutableStateOf("")
+        private set
+    private var loadedSourceId = ""
+    private val rejectedSources = mutableSetOf<String>()
     private val listeningStore = ListeningStore(appContext)
     private data class Prefetched(val key: String, val at: Long, var result: UrlResult? = null)
     private var prefetched: Prefetched? = null
@@ -86,8 +92,19 @@ class PlayerController(
             when (state) {
                 Player.STATE_BUFFERING -> isBuffering = true
                 Player.STATE_READY -> {
-                    isBuffering = false
                     val d = exoPlayer.duration
+                    val song = current
+                    if (song != null && d > 0 && song.interval > 0 && d < song.interval * 800L && song.interval * 1000L - d > 10000) {
+                        if (loadedOffline || (loadedSourceId.isNotBlank() && rejectedSources.add(loadedSourceId) && rejectedSources.size <= 8)) {
+                            selectedSourceId = null
+                            loadSong(song, positionMs.coerceAtMost(d), wantsPlayback, useOffline = false)
+                        } else {
+                            exoPlayer.pause(); isBuffering = false
+                            errorMessage = "音源返回了不完整歌曲，请切换播放源"
+                        }
+                        return
+                    }
+                    isBuffering = false
                     if (d > 0) durationMs = d
                 }
                 Player.STATE_ENDED -> {
@@ -229,6 +246,7 @@ class PlayerController(
         lyrics = emptyList(); positionMs = 0; durationMs = 0
         isPlaying = false; isBuffering = false; shuffleHistory.clear()
         wantsPlayback = false; requestedQualities = emptyList(); loadedQuality = null; loadedOffline = false
+        selectedSourceId = null; sourceName = ""; rejectedSources.clear()
         checkpoint()
     }
 
@@ -241,10 +259,13 @@ class PlayerController(
     private fun loadSong(song: Song, startPositionMs: Long = 0L, autoPlay: Boolean = true,
         qualities: List<String> = PlaybackQuality.order(preferredQuality), useOffline: Boolean = true) {
         loadJob?.cancel()
+        if (current?.key != song.key) { selectedSourceId = null; rejectedSources.clear() }
         wantsPlayback = autoPlay
         requestedQualities = qualities
         loadedQuality = null
         loadedOffline = false
+        loadedSourceId = ""
+        sourceName = ""
         exoPlayer.pause()
         exoPlayer.clearMediaItems()
         current = song
@@ -261,13 +282,15 @@ class PlayerController(
 
         loadJob = scope.launch {
             try {
-                val offline = if (useOffline) OfflineDownloads(appContext).completed(song.key) else null
-                val cached = prefetched?.takeIf { qualities == PlaybackQuality.order(preferredQuality) && it.key == song.key + ":" + preferredQuality && System.currentTimeMillis() - it.at < 45000 }?.result
+                val offline = if (useOffline && selectedSourceId == null && rejectedSources.isEmpty()) OfflineDownloads(appContext).completed(song.key) else null
+                val cached = prefetched?.takeIf { selectedSourceId == null && rejectedSources.isEmpty() && qualities == PlaybackQuality.order(preferredQuality) && it.key == song.key + ":" + preferredQuality && System.currentTimeMillis() - it.at < 45000 }?.result
                 prefetched = null
-                val result = if (offline != null) UrlResult(playUrl = java.io.File(offline.path).toURI().toString(), quality = offline.quality) else cached ?: api.playUrl(song, qualities)
+                val result = if (offline != null) UrlResult(playUrl = java.io.File(offline.path).toURI().toString(), quality = offline.quality) else cached ?: api.playUrl(song, qualities, selectedSourceId, rejectedSources.toList())
                 if (result.playUrl.isBlank()) throw IllegalStateException("没有获取到播放地址")
                 loadedQuality = result.quality
                 loadedOffline = offline != null
+                loadedSourceId = result.sourceId
+                sourceName = if (offline != null) "离线下载" else result.sourceName.ifBlank { if (result.cached) "服务端缓存" else "自动选源" }
                 qualityLabel = when (result.quality) {
                     "flac24bit" -> "Hi-Res"
                     "flac" -> "SQ"
@@ -291,7 +314,7 @@ class PlayerController(
                 val mediaItem = MediaItem.Builder()
                     .setMediaId(song.key)
                     .setUri(url)
-                    .setCustomCacheKey(song.key + ":" + result.quality)
+                    .setCustomCacheKey("verified-v2:" + song.key + ":" + result.quality + ":" + result.sourceId + ":" + result.cached)
                     .setMediaMetadata(metadata)
                     .build()
                 val cachedSource = CacheDataSource.Factory()
@@ -348,6 +371,14 @@ class PlayerController(
     fun changeQuality(value: String) {
         setDefaultQuality(value)
         current?.let { loadSong(it, exoPlayer.currentPosition.coerceAtLeast(0), exoPlayer.playWhenReady) }
+    }
+
+    fun changeSource(id: String?) {
+        val song = current ?: return
+        selectedSourceId = id
+        rejectedSources.clear()
+        val playing = exoPlayer.playWhenReady || (isBuffering && wantsPlayback)
+        loadSong(song, positionMs, playing, useOffline = id == null)
     }
 
     fun next(auto: Boolean = false) {

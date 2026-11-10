@@ -90,6 +90,7 @@ fun NowPlayingScreen(
     val song = player.current
     var showQueue by remember { mutableStateOf(false) }
     var showQuality by remember { mutableStateOf(false) }
+    var showSource by remember { mutableStateOf(false) }
     var lyricsExpanded by rememberSaveable { mutableStateOf(false) }
     val background = MaterialTheme.colorScheme.background
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -137,6 +138,9 @@ fun NowPlayingScreen(
                 }
                 AppTextButton(onClick = { showQuality = true }) {
                     Text("${player.qualityLabel.ifBlank { "音质" }} ⌄", style = MaterialTheme.typography.labelMedium)
+                }
+                AppTextButton(onClick = { showSource = true }, modifier = Modifier.weight(1f, fill = false)) {
+                    Text("${player.sourceName.ifBlank { "播放源" }} ⌄", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
                 }
             }
 
@@ -224,6 +228,7 @@ fun NowPlayingScreen(
     }
 
     if (showQuality) QualitySheet(player) { showQuality = false }
+    if (showSource) SourceSheet(api, player) { showSource = false }
 
     if (showQueue) QueueSheet(api, player) { showQueue = false }
 

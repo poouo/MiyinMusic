@@ -8,9 +8,18 @@ const log = logger('db')
 
 let database: DatabaseSync | null = null
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 
 const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS audio_validation (
+    cache_key TEXT PRIMARY KEY,
+    bytes INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    duration REAL NOT NULL,
+    mime TEXT,
+    source_id TEXT,
+    source_name TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

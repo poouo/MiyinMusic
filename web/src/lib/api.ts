@@ -135,10 +135,10 @@ export const api = {
   pic: (platform: Platform, songmid: string) =>
     request<{ url: string }>('/api/pic' + qs({ platform, songmid })),
 
-  musicUrl: (song: Song, qualities: Quality[], sourceId?: string) =>
+  musicUrl: (song: Song, qualities: Quality[], sourceId?: string, excludedSourceIds?: string[]) =>
     request<UrlResult>('/api/url', {
       method: 'POST',
-      body: JSON.stringify({ song, qualities, sourceId }),
+      body: JSON.stringify({ song, qualities, sourceId, excludedSourceIds }),
     }),
 
   download: (song: Song) =>

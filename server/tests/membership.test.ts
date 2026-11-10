@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { wav } from './audio-fixture.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -163,6 +164,7 @@ test('cached and upstream playback enforce allowed qualities even with forged cl
   assert.equal(result.quality, '128k')
   assert.ok(!result.playUrl.includes('93.184.216.34'))
   assert.equal((await consume(result.playUrl, userToken)).status, 200)
+  fetchMedia = async () => new Response(wav(track.interval), { headers: { 'content-type': 'audio/wav' } })
   await audio.ensure(track)
   const cached = await (await request('/api/url', 'POST', { song: track, qualities: ['flac', '128k'] }, userToken)).json() as any
   assert.equal(cached.cached, true)

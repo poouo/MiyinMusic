@@ -6,6 +6,7 @@ import http from 'node:http'
 import { spawnSync } from 'node:child_process'
 import { after, afterEach, before, beforeEach, mock, test } from 'node:test'
 import type { LyricResult, Quality, Song } from '../src/types.js'
+import { wav } from './audio-fixture.js'
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'miyin-cache-test-'))
 process.env.MIYIN_DATA_DIR = temp
@@ -68,7 +69,7 @@ beforeEach(() => {
   getDb().exec('DELETE FROM favorites; DELETE FROM playlists')
   resolutions = []; downloads = []; lyricRequests = []
   resolveQuality = async (_track, quality) => quality
-  fetchAudio = async () => new Response('test audio data', { headers: { 'content-type': 'audio/mpeg' } })
+  fetchAudio = async () => new Response(wav(), { headers: { 'content-type': 'audio/wav' } })
   fetchLyric = async () => fullLyric
   mock.method(sourceManager, 'getMusicUrl', async (track: Song, preferred: Quality[], onlySourceId: unknown, strict: boolean) => {
     assert.equal(strict, true)
@@ -124,7 +125,7 @@ test('an existing standard file cannot skip the other three qualities, and repea
   assert.equal(downloads.length, 4)
   const files = getDb().prepare('SELECT file_name FROM audio_cache').all().map(row => String(row.file_name))
   assert.equal(new Set(files).size, 4)
-  for (const file of files) assert.equal(fs.readFileSync(path.join(temp, 'audio-cache', file), 'utf8'), 'test audio data')
+  for (const file of files) assert.deepEqual(fs.readFileSync(path.join(temp, 'audio-cache', file)), wav())
 })
 
 test('simultaneous requests for one song download each quality once', async () => {
@@ -327,4 +328,42 @@ test('cached lyrics remain usable offline when updating their access timestamp f
   } finally {
     getDb().exec('DROP TRIGGER fail_lyric_touch')
   }
+})
+
+test('short previews and error payloads never become server cache entries', async () => {
+  fetchAudio = async () => new Response(wav(19), { headers: { 'content-type': 'audio/wav' } })
+  assert.deepEqual(await audio.ensure({ ...song('preview'), interval: 382 }), [])
+  assert.equal(audio.stats().count, 0)
+  fetchAudio = async () => new Response('error payload disguised as audio', { headers: { 'content-type': 'audio/mpeg' } })
+  assert.deepEqual(await audio.ensure(song('error-payload')), [])
+  assert.equal(audio.stats().count, 0)
+  fetchAudio = async () => new Response(wav(19), { headers: { 'content-type': 'audio/wav' } })
+  assert.equal((await audio.ensure({ ...song('short-track'), interval: 19 })).length, 4)
+})
+
+test('legacy caches are validated, complete files retained and 19-second files removed', async () => {
+  const track = song('legacy')
+  await audio.ensure(track)
+  getDb().exec('DELETE FROM audio_validation')
+  const before = downloads.length
+  const valid = await audio.lookupValidated(track, ['128k'])
+  assert.ok(valid); assert.equal(valid.duration, 200); assert.equal(downloads.length, before)
+  const row = getDb().prepare('SELECT * FROM audio_cache WHERE cache_key = ?').get(valid.key)!
+  const preview = wav(19)
+  fs.writeFileSync(path.join(temp, 'audio-cache', String(row.file_name)), preview)
+  getDb().prepare('UPDATE audio_cache SET bytes = ? WHERE cache_key = ?').run(preview.length, valid.key)
+  assert.equal(await audio.lookupValidated(track, ['128k']), null)
+  assert.equal(fs.existsSync(path.join(temp, 'audio-cache', String(row.file_name))), false)
+})
+
+test('a complete download that exposes a preview retries another source before publishing cache', async () => {
+  mock.method(sourceManager, 'getMusicUrl', async (track: Song, qualities: Quality[], _id: unknown, _strict: boolean, excluded: string[] = []) => {
+    const sourceId = excluded.includes('preview') ? 'full' : 'preview'
+    return { url: 'https://93.184.216.34/' + sourceId, quality: qualities[0], platform: track.platform, sourceId, sourceName: sourceId }
+  })
+  fetchAudio = async url => new Response(wav(url.pathname === '/preview' ? 19 : 382), { headers: { 'content-type': 'audio/wav' } })
+  const result = await audio.ensure({ ...song('retry-full'), interval: 382 })
+  assert.equal(result.length, 4)
+  assert.ok(result.every(item => item.duration === 382 && item.sourceId === 'full'))
+  assert.equal(downloads.length, 8)
 })

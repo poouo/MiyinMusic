@@ -53,6 +53,8 @@ interface PlayerApi {
   shuffle: boolean
   quality: Quality
   sourceName: string | null
+  selectedSourceId: string | null
+  setSource: (id: string | null) => void
   lyric: LyricResult | null
   lyricLoading: boolean
   playSongs: (songs: Song[], startIndex?: number) => void
@@ -116,6 +118,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [repeat, setRepeat] = useState<RepeatMode>(persisted.current.shuffle ? 'all' : persisted.current.repeat ?? 'all')
   const [shuffle, setShuffle] = useState(!!persisted.current.shuffle)
   const [sourceName, setSourceName] = useState<string | null>(null)
+  const [selectedSourceId, selectSource] = useState<string | null>(null)
+  const selection = useRef<{ key?: string; id: string | null }>({ id: null })
   const [actualQuality, setActualQuality] = useState<Quality | null>(null)
   const [eqEnabled, setEqEnabled] = useState(false)
   const [eqGains, setEqGains] = useState<number[]>(() => loadJson('equalizer.gains', [0, 0, 0, 0, 0]))
@@ -156,9 +160,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const onTime = () => setCurrentTime(audio.currentTime || 0)
     const onMeta = (event: Event) => {
-      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
       const resume = resumeRef.current
       const active = stateRef.current.queue[stateRef.current.index]
+      if (active && !sourceDirtyRef.current && intentRef.current && Number.isFinite(audio.duration) && audio.duration > 0 &&
+        audio.duration < active.interval * .8 && active.interval - audio.duration > 10) {
+        audio.pause()
+        audioFailureRef.current(new Error('音源返回了不完整歌曲'))
+        return
+      }
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
       if (event.type === 'loadedmetadata' && audio.duration > 0 && active && resume.key === songKey(active) && resume.time > 0) {
         audio.currentTime = Math.min(resume.time, Number.isFinite(audio.duration) ? Math.max(0, audio.duration - 0.1) : resume.time)
         setCurrentTime(audio.currentTime)
@@ -262,6 +272,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(0)
 
     const load = new PlaybackLoad()
+    if (selection.current.key !== songKey(song)) { selection.current = { key: songKey(song), id: null }; selectSource(null) }
+    let sourceId = selection.current.id ?? undefined
+    let activeSourceId: string | undefined
+    const rejectedSources = new Set<string>()
     const qualities = stateRef.current.quality
     const start = (refresh = false, reuseSource = false) => {
       const attempt = load.begin(reuseSource)
@@ -289,6 +303,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         sourceDirtyRef.current = true
         if (action === 'retry') {
+          if (err instanceof Error && err.message.includes('不完整歌曲') && activeSourceId) {
+            rejectedSources.add(activeSourceId)
+            sourceId = undefined
+            selection.current.id = null
+            selectSource(null)
+          }
           if (audio.currentTime > 0) resumeRef.current = { key: songKey(song), time: audio.currentTime }
           // Keep the retry inside this load so refreshing the URL cannot reset its budget.
           start(true)
@@ -315,12 +335,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (reuseSource) { play(); return }
       const cached = prefetched.current
       const key = songKey(song) + ':' + qualities.join(',')
-      const resolved = !refresh && cached?.key === key && cached.result && Date.now() - cached.at < 45000 ? Promise.resolve(cached.result) : api.musicUrl(song, qualities)
+      const resolved = !sourceId && !refresh && cached?.key === key && cached.result && Date.now() - cached.at < 45000 ? Promise.resolve(cached.result) : api.musicUrl(song, qualities, sourceId, [...rejectedSources])
       prefetched.current = null
       resolved
       .then((result) => {
         if (token !== tokenRef.current || !load.isCurrent(attempt) || !intentRef.current) return
-        setSourceName(result.sourceName)
+        setSourceName(result.sourceName || '服务端缓存')
+        activeSourceId = result.sourceId
         setActualQuality(result.quality)
         audio.src = result.playUrl
         sourceDirtyRef.current = false
@@ -621,6 +642,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     shuffleHistory.current = []
   }, [])
 
+  const setSource = useCallback((id: string | null) => {
+    if (!current) return
+    resumeRef.current = { key: songKey(current), time: audioRef.current?.currentSrc ? audioRef.current.currentTime : currentTime }
+    selection.current = { key: songKey(current), id }
+    selectSource(id)
+    prefetched.current = null
+    sourceDirtyRef.current = true
+    tokenRef.current++
+    setRequestId(value => value + 1)
+  }, [current, currentTime])
+
   const setQuality = useCallback(
     (next: Quality) => {
       if (current) resumeRef.current = { key: songKey(current), time: audioRef.current?.currentSrc ? audioRef.current.currentTime : currentTime }
@@ -735,6 +767,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       quality,
       sourceName,
+      selectedSourceId, setSource,
       lyric,
       lyricLoading,
       playSongs,
@@ -772,6 +805,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       shuffle,
       quality,
       sourceName,
+      selectedSourceId, setSource,
       lyric,
       lyricLoading,
       playSongs,

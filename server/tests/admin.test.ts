@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { wav } from './audio-fixture.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -218,11 +219,12 @@ function cachedPlaybackSong(quality: '128k' | '320k') {
   getDb().prepare('DELETE FROM audio_cache').run()
   const track = { ...song(999), qualities: ['320k', '128k'] }
   const filename = 'quality-regression.mp3'
-  fs.writeFileSync(path.join(serverConfig.audioCacheDir, filename), Buffer.alloc(128))
+  const data = wav(track.interval)
+  fs.writeFileSync(path.join(serverConfig.audioCacheDir, filename), data)
   getDb().prepare(`INSERT INTO audio_cache
     (cache_key, song_key, platform, songmid, quality, file_name, bytes, created_at, last_access_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run('quality-fixture', 'wy_999', 'wy', '999', quality, filename, 128, Date.now(), Date.now())
+    .run('quality-fixture', 'wy_999', 'wy', '999', quality, filename, data.length, Date.now(), Date.now())
   return track
 }
 
@@ -277,4 +279,17 @@ test('standard playback does not upgrade to an HQ cache or hide a source error',
   })
   const response = await request('/api/url', 'POST', { song: track, qualities: ['128k'] })
   assert.equal(response.status, 500)
+})
+
+test('explicit playback source bypasses shared caches and returns its identity', async t => {
+  const track = cachedPlaybackSong('320k')
+  const resolve = t.mock.method(sourceManager, 'getMusicUrl', async (_song, _qualities, source) => {
+    assert.equal(source, 'chosen')
+    return { url: 'https://audio.example/full.mp3', quality: '320k' as const, sourceId: 'chosen', sourceName: 'Chosen source', platform: 'wy' as const }
+  })
+  const response = await request('/api/url', 'POST', { song: track, qualities: ['320k'], sourceId: 'chosen' })
+  assert.equal(response.status, 200)
+  const body = await response.json() as any
+  assert.equal(body.cached, false); assert.equal(body.sourceId, 'chosen'); assert.equal(body.sourceName, 'Chosen source')
+  assert.equal(resolve.mock.callCount(), 1)
 })
