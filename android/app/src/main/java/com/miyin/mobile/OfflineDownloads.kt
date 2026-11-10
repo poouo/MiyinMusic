@@ -77,6 +77,7 @@ class OfflineDownloads(context: Context) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OfflineLibraryButton(onPlay: (List<Song>, Int) -> Unit) {
     val context = LocalContext.current
@@ -102,7 +103,7 @@ fun OfflineLibraryButton(onPlay: (List<Song>, Int) -> Unit) {
                         DownloadManager.STATUS_FAILED -> "下载失败，可移除后重试"
                         else -> if ((state?.total ?: 0) > 0) "下载中 ${state!!.bytes * 100 / state.total}%" else "等待下载"
                     }, style = MaterialTheme.typography.bodySmall)
-                    Row {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppTextButton(enabled = complete, onClick = { onPlay(listOf(track.song), 0) }) { Text("播放") }
                         AppTextButton(onClick = { downloads.remove(track); tracks = downloads.tracks() }) { Text(if (state?.status == DownloadManager.STATUS_SUCCESSFUL) "删除文件" else "取消 / 移除") }
                     }

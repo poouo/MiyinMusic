@@ -60,12 +60,17 @@ fun CatalogDialog(api: ApiClient, id: String?, player: PlayerController, onClose
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiscoveryTools() {
     val actions = LocalLibraryActions.current ?: return
     var recommendations by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
-    Row(Modifier.padding(horizontal = 16.dp)) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         AppTextButton(onClick = { recommendations = true }) { Text("为你选歌") }
         AppTextButton(onClick = { following = true }) { Text("关注的歌手 · ${actions.library.favoriteSingers.size}") }
     }

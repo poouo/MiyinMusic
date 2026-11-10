@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryScreen(
     api: ApiClient,
@@ -175,7 +178,14 @@ fun LibraryScreen(
             LibraryTab("歌单", Icons.Rounded.QueueMusic, tab == 2, library.playlists.size) { tab = 2 }
         }
 
-        Row { PlaylistManager(); OfflineLibraryButton(onPlay) }
+        FlowRow(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            PlaylistManager()
+            OfflineLibraryButton(onPlay)
+        }
         DiscoveryTools()
         AnimatedContent(
             targetState = tab,

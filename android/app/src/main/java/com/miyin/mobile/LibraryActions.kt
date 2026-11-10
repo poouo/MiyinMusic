@@ -111,16 +111,15 @@ fun PlaylistManager() {
             finally { busy = false }
         }
     }
-    Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
-        AppTextButton(onClick = { if (actions.requireLogin()) { editing = null; name = ""; naming = true } }) { Text("新建歌单") }
-        AppTextButton(onClick = { if (actions.requireLogin()) open = true }) { Text("管理歌单") }
-    }
+    // Emit separate actions so the parent's FlowRow can wrap each button.
+    AppTextButton(onClick = { if (actions.requireLogin()) { editing = null; name = ""; naming = true } }) { Text("新建歌单") }
+    AppTextButton(onClick = { if (actions.requireLogin()) open = true }) { Text("管理歌单") }
     if (open) AppDialog(onDismissRequest = { open = false }, title = { Text("管理歌单") }, text = {
         LazyColumn(Modifier.heightIn(max = 360.dp)) {
             items(actions.library.playlists, key = { it.id }) { playlist ->
                 Column {
                     Text(playlist.name, maxLines = 1)
-                    Row {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppTextButton(onClick = { editing = playlist; name = playlist.name; naming = true }) { Text("改名") }
                         AppTextButton(onClick = { deleting = playlist }) { Text("删除") }
                     }
