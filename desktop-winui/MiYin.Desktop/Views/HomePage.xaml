@@ -58,17 +58,15 @@
                                 <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                             </ListView.ItemsPanel>
                         </ListView>
-                        <Button x:Name="PlaylistPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
-                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="PlaylistPrev_Click"
-                                ToolTipService.ToolTip="向左">
-                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        <Button x:Name="PlaylistPrev" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Left"
+                                VerticalAlignment="Top" Margin="-18,62,0,0" Visibility="Collapsed" Click="PlaylistPrev_Click"
+                                AutomationProperties.Name="推荐歌单上一页" ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
-                        <Button x:Name="PlaylistNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
-                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="PlaylistNext_Click"
-                                ToolTipService.ToolTip="向右">
-                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        <Button x:Name="PlaylistNext" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Right"
+                                VerticalAlignment="Top" Margin="0,62,-18,0" Visibility="Collapsed" Click="PlaylistNext_Click"
+                                AutomationProperties.Name="推荐歌单下一页" ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
                     </Grid>
                 </StackPanel>
@@ -89,17 +87,15 @@
                                 <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                             </ListView.ItemsPanel>
                         </ListView>
-                        <Button x:Name="ChartPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
-                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="ChartPrev_Click"
-                                ToolTipService.ToolTip="向左">
-                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        <Button x:Name="ChartPrev" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Left"
+                                VerticalAlignment="Top" Margin="-18,62,0,0" Visibility="Collapsed" Click="ChartPrev_Click"
+                                AutomationProperties.Name="排行榜上一页" ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
-                        <Button x:Name="ChartNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
-                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="ChartNext_Click"
-                                ToolTipService.ToolTip="向右">
-                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        <Button x:Name="ChartNext" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Right"
+                                VerticalAlignment="Top" Margin="0,62,-18,0" Visibility="Collapsed" Click="ChartNext_Click"
+                                AutomationProperties.Name="排行榜下一页" ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
                     </Grid>
                 </StackPanel>
@@ -120,17 +116,15 @@
                                 <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                             </ListView.ItemsPanel>
                         </ListView>
-                        <Button x:Name="NewSongPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
-                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="NewSongPrev_Click"
-                                ToolTipService.ToolTip="向左">
-                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        <Button x:Name="NewSongPrev" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Left"
+                                VerticalAlignment="Top" Margin="-18,54,0,0" Visibility="Collapsed" Click="NewSongPrev_Click"
+                                AutomationProperties.Name="新歌上一页" ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
-                        <Button x:Name="NewSongNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
-                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="NewSongNext_Click"
-                                ToolTipService.ToolTip="向右">
-                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        <Button x:Name="NewSongNext" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Right"
+                                VerticalAlignment="Top" Margin="0,54,-18,0" Visibility="Collapsed" Click="NewSongNext_Click"
+                                AutomationProperties.Name="新歌下一页" ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
                     </Grid>
                 </StackPanel>
@@ -147,17 +141,15 @@
                                 <ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                             </ListView.ItemsPanel>
                         </ListView>
-                        <Button x:Name="SingerPrev" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Left"
-                                VerticalAlignment="Center" Margin="6,0,0,8" Visibility="Visible" Opacity="0.55" Click="SingerPrev_Click"
-                                ToolTipService.ToolTip="向左">
-                            <FontIcon Glyph="&#xE76B;" FontSize="15" />
+                        <Button x:Name="SingerPrev" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Left"
+                                VerticalAlignment="Top" Margin="-18,36,0,0" Visibility="Collapsed" Click="SingerPrev_Click"
+                                AutomationProperties.Name="歌手上一页" ToolTipService.ToolTip="向左">
+                            <FontIcon Glyph="&#xE76B;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
-                        <Button x:Name="SingerNext" Style="{StaticResource FlatIconButtonStyle}" Width="34" Height="60"
-                                Background="#D90C0F17" Foreground="{ThemeResource TextBrush}" HorizontalAlignment="Right"
-                                VerticalAlignment="Center" Margin="0,0,6,8" Visibility="Visible" Opacity="0.55" Click="SingerNext_Click"
-                                ToolTipService.ToolTip="向右">
-                            <FontIcon Glyph="&#xE76C;" FontSize="15" />
+                        <Button x:Name="SingerNext" Style="{StaticResource RailArrowButtonStyle}" HorizontalAlignment="Right"
+                                VerticalAlignment="Top" Margin="0,36,-18,0" Visibility="Collapsed" Click="SingerNext_Click"
+                                AutomationProperties.Name="歌手下一页" ToolTipService.ToolTip="向右">
+                            <FontIcon Glyph="&#xE76C;" FontSize="18" Foreground="{ThemeResource TextBrush}" />
                         </Button>
                     </Grid>
                 </StackPanel>

@@ -176,7 +176,7 @@ public sealed partial class HomePage : Page
 
     private void RailHost_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Grid host) HideRailArrows(host);
+        if (sender is Grid host) SetArrowsForHost(host, e);
     }
 
     private void PlaylistPrev_Click(object sender, RoutedEventArgs e) => ScrollRail(PlaylistRail, -1);
@@ -207,7 +207,9 @@ public sealed partial class HomePage : Page
     private static void SetArrowsForHost(Grid host, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(host).Position;
-        var inside = point.X >= 0 && point.Y >= 0 && point.X <= host.ActualWidth && point.Y <= host.ActualHeight;
+        // 圆形箭头向两侧留白外移半个按钮，鼠标移到外侧半圆时也应保持显示。
+        const double arrowOverhang = 18;
+        var inside = point.X >= -arrowOverhang && point.Y >= 0 && point.X <= host.ActualWidth + arrowOverhang && point.Y <= host.ActualHeight;
         if (inside) ShowRailArrows(host);
         else HideRailArrows(host);
     }
