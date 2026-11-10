@@ -1,0 +1,21 @@
+# Opt-in sidecar: docker compose -f docker-compose.yml -f docker-compose.xiaozhi.yml --profile xiaozhi up -d
+services:
+  miyin-xiaozhi:
+    image: ghcr.io/poouo/miyinmusic:latest
+    profiles: [xiaozhi]
+    restart: unless-stopped
+    command: [node, scripts/xiaozhi-mcp-bridge.mjs]
+    environment:
+      MCP_ENDPOINT: ${XIAOZHI_MCP_ENDPOINT:?请填写小智后台的 MCP 接入点}
+      MIYIN_API_KEY: ${XIAOZHI_MIYIN_API_KEY:?请填写该用户的设备密钥}
+      MIYIN_MCP_URL: http://miyin:3000/api/v1/mcp
+    depends_on:
+      miyin:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

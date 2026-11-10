@@ -203,3 +203,19 @@ export function beginDownload(id: string, subject: string, role: string | null |
 export function resetUsage(subject: string): void {
   sql('DELETE FROM download_usage WHERE subject = ?').run(subject)
 }
+
+/** Direct links cannot meter audio bytes; count successful link issuance atomically. */
+export function chargeDirectDownload(subject: string, role: string, quality: Quality): void {
+  transaction(() => {
+    const policy = assertDownload(role, quality)
+    assertDirectDownloadPolicy(policy)
+    checkDownloadAllowance(subject, policy)
+    addUsage(subject, 1, 0, periods())
+  })
+}
+
+export function assertDirectDownloadPolicy(policy: AudiencePolicy): void {
+  if (policy.dailyBytes !== null || policy.monthlyBytes !== null) {
+    throw new HttpError(403, '当前账号设置了下载流量额度，直链下载无法核验流量；请使用站内下载或联系管理员', 'direct_download_byte_quota')
+  }
+}

@@ -27,6 +27,11 @@ import type {
   User,
   Quality,
   Platform,
+  DeviceApiConfig,
+  DeviceApiStatus,
+  DeviceKey,
+  DeviceScope,
+  DeviceAccess,
 } from './types'
 
 export class ApiError extends Error {
@@ -144,9 +149,20 @@ export const api = {
   download: (song: Song) =>
     request<DownloadResult>('/api/download', { method: 'POST', body: JSON.stringify({ song }) }),
   access: () => request<AccessInfo>('/api/access'),
+  deviceApi: {
+    status: () => request<DeviceApiStatus>('/api/device-api'),
+    create: (body: { name: string; scopes: DeviceScope[]; expiresInDays: number | null }) =>
+      request<{ key: DeviceKey; token: string }>('/api/device-api/keys', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id: string, body: { name?: string; scopes?: DeviceScope[] }) =>
+      request<{ key: DeviceKey }>('/api/device-api/keys/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) }),
+    revoke: (id: string) => request<{ ok: boolean }>('/api/device-api/keys/' + encodeURIComponent(id), { method: 'DELETE' }),
+  },
 
   // ---- 管理后台（仅管理员；其他人一律 404） ----
   admin: {
+    deviceAccess: (id: string) => request<DeviceApiStatus>('/api/admin/users/' + encodeURIComponent(id) + '/device-api'),
+    saveDeviceAccess: (id: string, mode: DeviceAccess['mode']) => request<DeviceApiStatus>('/api/admin/users/' + encodeURIComponent(id) + '/device-api', { method: 'PUT', body: JSON.stringify({ mode }) }),
+    revokeDeviceKey: (userId: string, id: string) => request<{ ok: boolean }>('/api/admin/users/' + encodeURIComponent(userId) + '/device-api/keys/' + encodeURIComponent(id), { method: 'DELETE' }),
     userAccess: (userId: string) => request<AccessInfo>('/api/admin/users/' + encodeURIComponent(userId) + '/access'),
     resetUserQuota: (userId: string) => request<AccessInfo>('/api/admin/users/' + encodeURIComponent(userId) + '/access', { method: 'DELETE' }),
     userFavorites: (userId: string, params: { q?: string; page?: number; limit?: number } = {}) =>
@@ -198,7 +214,7 @@ export const api = {
       request<{ ok: boolean; removed: number }>('/api/admin/unlock', { method: 'POST', body: JSON.stringify({ all: true }) }),
     audit: (params: { page?: number; limit?: number }) => request<{ audit: { total: number; page: number; limit: number; entries: AuditEntry[] } }>('/api/admin/audit' + qs(params)),
     config: () =>
-      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig } }>(
+      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig; deviceApi: DeviceApiConfig } }>(
         '/api/admin/config',
       ),
     saveConfig: (body: {
@@ -206,8 +222,9 @@ export const api = {
       download?: Partial<DownloadConfig>
       cache?: Partial<CacheConfig>
       membership?: MembershipConfig
+      deviceApi?: DeviceApiConfig
     }) =>
-      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig } }>(
+      request<{ config: { registration: { enabled: boolean }; download: DownloadConfig; cache: CacheConfig; membership: MembershipConfig; deviceApi: DeviceApiConfig } }>(
         '/api/admin/config',
         {
           method: 'PUT',

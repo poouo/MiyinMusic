@@ -68,6 +68,13 @@ export interface AppConfig {
   download: DownloadConfig
   cache: CacheConfig
   membership: MembershipConfig
+  deviceApi: DeviceApiConfig
+}
+
+export interface DeviceApiConfig {
+  enabled: boolean
+  roles: ('user' | 'vip' | 'admin')[]
+  requestsPerMinute: number
 }
 
 const ENV_ALLOW_REGISTER = process.env.MIYIN_ALLOW_REGISTER !== '0'
@@ -78,6 +85,7 @@ const MIN_CACHE_BYTES = 256 * 1024 * 1024
 const MAX_CACHE_BYTES = 4 * 1024 * 1024 * 1024 * 1024
 
 const DEFAULT_CONFIG: AppConfig = {
+  deviceApi: { enabled: false, roles: ['admin'], requestsPerMinute: 60 },
   registration: { enabled: ENV_ALLOW_REGISTER },
   download: { enabled: true, roles: ['user', 'vip', 'admin'], qualities: ['320k', '128k'] },
   cache: {
@@ -136,6 +144,13 @@ function normalize(input: unknown): AppConfig {
     }
   }
   return {
+    deviceApi: {
+      enabled: raw.deviceApi?.enabled === true,
+      roles: Array.isArray(raw.deviceApi?.roles)
+        ? (['user', 'vip', 'admin'] as const).filter(role => raw.deviceApi!.roles.includes(role)) : ['admin'],
+      requestsPerMinute: Number.isSafeInteger(raw.deviceApi?.requestsPerMinute)
+        ? Math.min(600, Math.max(10, raw.deviceApi!.requestsPerMinute)) : 60,
+    },
     registration: { enabled: registration.enabled !== false },
     download: {
       enabled: download.enabled !== false,
@@ -167,7 +182,7 @@ export function getAppConfig(): AppConfig {
 }
 
 export function updateAppConfig(
-  patch: Partial<Omit<AppConfig, 'cache' | 'membership'>> & { cache?: Partial<CacheConfig>; membership?: MembershipPatch },
+  patch: Partial<Omit<AppConfig, 'cache' | 'membership' | 'deviceApi'>> & { cache?: Partial<CacheConfig>; membership?: MembershipPatch; deviceApi?: Partial<DeviceApiConfig> },
 ): AppConfig {
   const current = getAppConfig()
   const membership = {
@@ -184,6 +199,7 @@ export function updateAppConfig(
     }
   }
   const next = normalize({
+    deviceApi: { ...current.deviceApi, ...patch.deviceApi },
     registration: { ...current.registration, ...(patch.registration ?? {}) },
     download: { ...current.download, ...(patch.download ?? {}) },
     cache: { ...current.cache, ...(patch.cache ?? {}) },

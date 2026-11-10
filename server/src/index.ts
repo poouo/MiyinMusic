@@ -115,7 +115,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       return
     }
     const message = err instanceof Error ? err.message : String(err)
-    log.warn('请求失败：', req.method, req.url, message)
+    log.warn('请求失败：', req.method, (req.url ?? '/').split('?')[0], message)
     sendError(res, 500, message)
   }
 }

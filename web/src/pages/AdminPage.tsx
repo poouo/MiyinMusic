@@ -4,6 +4,7 @@ import { AdminPlaylists } from '../components/AdminPlaylists'
 import { Select } from '../components/Select'
 import { AdminFavorites } from '../components/AdminFavorites'
 import { MembershipSettings } from '../components/MembershipSettings'
+import { AdminDeviceApiSettings, UserDeviceApiAccess } from '../components/DeviceApiSettings'
 import { formatCount, initials, timeAgo } from '../lib/format'
 import {
   AUDIENCE_NAMES,
@@ -54,7 +55,7 @@ import {
   UsersIcon,
 } from '../components/Icons'
 
-type Section = 'favorites' | 'playlists' | 'overview' | 'users' | 'sources' | 'site' | 'download' | 'cache' | 'audit'
+type Section = 'favorites' | 'playlists' | 'overview' | 'users' | 'sources' | 'site' | 'download' | 'device-api' | 'cache' | 'audit'
 
 const SECTIONS: { id: Section; label: string; icon: typeof UsersIcon }[] = [
   { id: 'overview', label: '概览', icon: ActivityIcon },
@@ -64,6 +65,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof UsersIcon }[] = [
   { id: 'sources', label: '音源', icon: ServerIcon },
   { id: 'site', label: '站点设置', icon: LockIcon },
   { id: 'download', label: '会员与权限', icon: CrownIcon },
+  { id: 'device-api', label: '设备 API', icon: KeyIcon },
   { id: 'cache', label: '音乐缓存', icon: DatabaseIcon },
   { id: 'audit', label: '操作日志', icon: FileTextIcon },
 ]
@@ -74,6 +76,11 @@ const AUDIT_LABELS: Record<string, string> = {
   'user.login.fail': '登录失败',
   'user.password': '修改密码',
   'user.download': '下载',
+  'device.download': '设备下载直链',
+  'device.key.create': '创建设备密钥',
+  'device.key.update': '修改设备密钥',
+  'device.key.revoke': '删除设备密钥',
+  'admin.device.access': '修改用户设备 API 权限',
   'admin.user.create': '后台新建用户',
   'admin.user.password': '后台重置密码',
   'admin.user.role': '后台修改角色',
@@ -179,6 +186,7 @@ function AdminPanel() {
           {section === 'sources' ? <SourcesSection /> : null}
           {section === 'site' ? <SiteSection /> : null}
           {section === 'download' ? <DownloadSection /> : null}
+          {section === 'device-api' ? <AdminDeviceApiSettings /> : null}
           {section === 'cache' ? <CacheSection /> : null}
           {section === 'audit' ? <AuditSection /> : null}
         </div>
@@ -628,6 +636,7 @@ function UsersSection({ onPlaylists, onFavorites }: { onPlaylists: (user: AdminU
               <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位" />
             </div>
             <UserDownloadUsage userId={editing.id} />
+            <UserDeviceApiAccess key={editing.id} userId={editing.id} />
             <div className="row gap-8" style={{ justifyContent: 'flex-end' }}>
               <button className="btn btn--ghost" onClick={() => setEditing(null)}>取消</button>
               <button

@@ -6,7 +6,9 @@ data
 dist
 docs
 desktop-winui
-scripts
+scripts/*
+!scripts/xiaozhi-mcp-bridge.mjs
+.env*
 *.log
 *.md
 docker-compose.yml

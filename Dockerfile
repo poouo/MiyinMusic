@@ -23,6 +23,7 @@ COPY --from=build /app/server/package.json ./server/package.json
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist
+COPY --from=build /app/scripts/xiaozhi-mcp-bridge.mjs ./scripts/xiaozhi-mcp-bridge.mjs
 
 RUN mkdir -p /app/data
 

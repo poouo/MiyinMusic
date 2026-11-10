@@ -242,6 +242,30 @@ export interface AppConfig {
   access?: AccessInfo
 }
 
+export type DeviceScope = 'search' | 'playback' | 'download' | 'lyrics' | 'library'
+export interface DeviceApiConfig {
+  enabled: boolean
+  roles: UserRole[]
+  requestsPerMinute: number
+}
+export interface DeviceAccess {
+  enabled: boolean
+  authorized: boolean
+  allowed: boolean
+  mode: 'inherit' | 'allow' | 'deny'
+  requestsPerMinute: number
+}
+export interface DeviceKey {
+  id: string
+  name: string
+  prefix: string
+  scopes: DeviceScope[]
+  createdAt: number
+  expiresAt: number | null
+  lastUsedAt: number | null
+}
+export interface DeviceApiStatus { access: DeviceAccess; keys: DeviceKey[] }
+
 export interface RegistrationConfig {
   enabled: boolean
 }

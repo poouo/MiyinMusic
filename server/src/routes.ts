@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { config } from './config.js'
 import {
   changePassword,
+  findById,
   checkRateLimit,
   createSession,
   deleteUserById,
@@ -53,6 +54,9 @@ import { sessionCache } from './session-cache.js'
 import { qualityOrder } from './quality.js'
 import { fullPlaylist, resolvePlaylistLink } from './playlist-import.js'
 import { recommendations } from './recommendations.js'
+import * as devices from './device-auth.js'
+import { handleDeviceApi } from './device-api.js'
+import { resolveAudio } from './media-resolver.js'
 
 const log = logger('api')
 const SESSION_COOKIE = 'miyin_token'
@@ -180,6 +184,8 @@ function publicLibrary(userId: string) {
 
 /** 主 API 分发；返回 false 表示该路径未匹配 */
 export async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  // Device routes use dedicated Bearer keys, never cookies; browser CSRF rules remain below.
+  if (await handleDeviceApi(req, res, url)) return true
   const pathname = url.pathname
   const method = (req.method ?? 'GET').toUpperCase()
 
@@ -215,6 +221,29 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     const viewer = currentUser(req)
     sendJson(res, 200, { audience: audienceOf(viewer?.role), ...accessPolicy(viewer?.role),
       usage: membership.usage(membership.quotaSubject(req, viewer)) })
+    return true
+  }
+
+  // Browser session management of device credentials (keys themselves cannot access this).
+  if (pathname === '/api/device-api' && method === 'GET') {
+    const user = requireUser(req)
+    sendJson(res, 200, { access: devices.access(user), keys: devices.listKeys(user.id) })
+    return true
+  }
+  if (pathname === '/api/device-api/keys' && method === 'POST') {
+    const user = requireUser(req)
+    sendJson(res, 201, devices.createKey(user, await readJson(req, 16 * 1024)))
+    return true
+  }
+  const deviceKey = /^\/api\/device-api\/keys\/([^/]+)$/.exec(pathname)
+  if (deviceKey && method === 'DELETE') {
+    const user = requireUser(req)
+    devices.revokeKey(user.id, decodeURIComponent(deviceKey[1]), user)
+    sendJson(res, 200, { ok: true }); return true
+  }
+  if (deviceKey && method === 'PATCH') {
+    const user = requireUser(req)
+    sendJson(res, 200, { key: devices.updateKey(user, decodeURIComponent(deviceKey[1]), await readJson(req, 16 * 1024)) })
     return true
   }
 
@@ -336,6 +365,23 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       }
       sendJson(res, 200, { audience: audienceOf(user.role), ...accessPolicy(user.role), usage: membership.usage(subject) })
       return true
+    }
+
+    const deviceUser = /^\/api\/admin\/users\/([^/]+)\/device-api(?:\/keys\/([^/]+))?$/.exec(pathname)
+    if (deviceUser) {
+      const user = findById(decodeURIComponent(deviceUser[1]))
+      if (!user) throw notFoundError('用户不存在')
+      if (method === 'GET' && !deviceUser[2]) {
+        sendJson(res, 200, { access: devices.access(user), keys: devices.listKeys(user.id) }); return true
+      }
+      if (method === 'PUT' && !deviceUser[2]) {
+        const body = await readJson<{ mode?: unknown }>(req)
+        sendJson(res, 200, { access: devices.setAccess(user, body.mode, actor), keys: devices.listKeys(user.id) }); return true
+      }
+      if (method === 'DELETE' && deviceUser[2]) {
+        devices.revokeKey(user.id, decodeURIComponent(deviceUser[2]), actor)
+        sendJson(res, 200, { ok: true }); return true
+      }
     }
 
     if (pathname === '/api/admin/users' && method === 'GET') {
@@ -506,6 +552,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         download?: { enabled?: boolean; roles?: string[]; qualities?: string[] }
         cache?: { enabled?: boolean; maxBytes?: number; warmCollections?: boolean; qualities?: string[] }
         membership?: unknown
+        deviceApi?: unknown
       }>(req)
       const requested = body.download ?? {}
       const membershipPatch = body.membership === undefined ? undefined : membership.validateMembershipPatch(body.membership)
@@ -519,6 +566,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
         }
       }
       const next = updateAppConfig({
+        deviceApi: body.deviceApi === undefined ? undefined : devices.validateConfig(body.deviceApi),
         registration: body.registration ? { enabled: body.registration.enabled !== false } : undefined,
         download: body.download ? {
           enabled: requested.enabled ?? getAppConfig().download.enabled,
@@ -547,7 +595,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
           Math.round(next.cache.maxBytes / 1024 / 1024) +
           'MB · ' +
           next.cache.qualities.join('/') +
-          '）；会员限制：' + (next.membership.enabled ? '开启' : '关闭') +
+          '）；设备 API：' + (next.deviceApi.enabled ? '开启' : '关闭') +
+          '；会员限制：' + (next.membership.enabled ? '开启' : '关闭') +
           (membershipPatch ? '；角色权限：' + JSON.stringify(next.membership.audiences) : ''),
       })
       sendJson(res, 200, { config: next })
@@ -789,43 +838,14 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     if (!allowed.length) throw new HttpError(403, '当前身份不支持所选音质', 'playback_forbidden')
     const subject = membership.quotaSubject(req, viewer)
 
-    // A lower-quality cache is a fallback, not a reason to skip the requested quality.
-    const cached = body.sourceId || excluded.length ? null : await audioCache.lookupValidated(song, allowed)
-    const sendCached = () => {
-      if (!cached) return
-      sendJson(res, 200, {
-        playUrl: playbackUrl('cache:' + cached.key, cached.quality, subject),
-        quality: cached.quality,
-        platform: song.platform,
-        cached: true,
-        sourceId: cached.sourceId,
-        sourceName: cached.sourceName,
-        duration: cached.duration,
-      })
-    }
-    if (cached?.quality === allowed[0]) { sendCached(); return true }
-
-    // Only request qualities preferred over the available cache. If all fail,
-    // cached playback remains available even when the source is offline.
-    const preferred = cached ? allowed.slice(0, allowed.indexOf(cached.quality)) : allowed
-    let result: Awaited<ReturnType<typeof sourceManager.getMusicUrl>>
-    try {
-      result = await withDeadline(
-        sourceManager.getMusicUrl(song, preferred, body.sourceId, true, excluded),
-        12000,
-        '获取播放地址超时，请稍后重试或换一首',
-      )
-    } catch (error) {
-      if (!cached) throw error
-      sendCached(); return true
-    }
+    const result = await resolveAudio(song, allowed, { sourceId: body.sourceId, excluded })
     membership.assertPlayback(currentUser(req)?.role, result.quality)
     if (!allowed.includes(result.quality)) throw new HttpError(403, '返回音质超出权限范围')
     sendJson(res, 200, {
-      playUrl: playbackUrl(result.url, result.quality, subject),
+      playUrl: playbackUrl(result.target, result.quality, subject),
       quality: result.quality,
       platform: result.platform,
-      cached: false,
+      cached: result.cached,
       sourceId: result.sourceId,
       sourceName: result.sourceName,
       duration: result.duration,

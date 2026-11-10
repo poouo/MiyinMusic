@@ -11,6 +11,22 @@ let database: DatabaseSync | null = null
 const SCHEMA_VERSION = 2
 
 const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS device_api_access (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS device_api_keys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    prefix TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    last_used_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_device_keys_user ON device_api_keys(user_id)`,
   `CREATE TABLE IF NOT EXISTS audio_validation (
     cache_key TEXT PRIMARY KEY,
     bytes INTEGER NOT NULL,

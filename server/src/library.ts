@@ -169,6 +169,13 @@ export function librarySummary(userId: string) {
   }
 }
 
+/** Summary reads do not deserialize every song or load unrelated history/settings. */
+export function playlistSummaries(userId: string) {
+  return getDb().prepare(`SELECT p.id, p.name, p.description, p.created_at AS createdAt, p.updated_at AS updatedAt,
+    (SELECT COUNT(*) FROM playlist_songs s WHERE s.playlist_id = p.id) AS songCount
+    FROM playlists p WHERE p.user_id = ? ORDER BY p.created_at DESC`).all(userId)
+}
+
 export function addFavorite(userId: string, input: unknown): UserLibrary {
   const song = sanitizeSong(input)
   const key = songKey(song)

@@ -9,14 +9,16 @@ import { useToast } from '../state/toast'
 import { PLATFORMS, PLATFORM_NAMES, QUALITY_NAMES, ROLE_NAMES, type Quality } from '../lib/types'
 import { initials } from '../lib/format'
 import { Select } from '../components/Select'
+import { DeviceApiSettings } from '../components/DeviceApiSettings'
 import { AlertIcon, CheckIcon, CrownIcon, LogOutIcon, ShieldIcon, SlidersIcon, UserIcon } from '../components/Icons'
 
-type Section = 'account' | 'playback' | 'appearance' | 'about'
+type Section = 'account' | 'playback' | 'appearance' | 'device-api' | 'about'
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'account', label: '账号' },
   { id: 'playback', label: '播放' },
   { id: 'appearance', label: '外观' },
+  { id: 'device-api', label: '设备 API' },
   { id: 'about', label: '关于' },
 ]
 
@@ -98,6 +100,10 @@ export function SettingsPage({ section: initialSection = 'account' }: { section?
         </div>
 
         <div>
+          {section === 'device-api' ? auth.user ? <DeviceApiSettings key={auth.user.id} /> : <div className="card card--pad-lg stack gap-16">
+            <p>登录后可查看设备 API 权限并管理自己的设备密钥。</p>
+            <button className="btn btn--primary" onClick={() => authModal.open('login')}>登录 / 注册</button>
+          </div> : null}
           {section === 'account' ? (
             <div className="card card--pad-lg">
               {auth.user ? (
