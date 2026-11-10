@@ -87,8 +87,8 @@ fun OfflineLibraryButton(onPlay: (List<Song>, Int) -> Unit) {
     LaunchedEffect(open) {
         while (open) { tracks = downloads.tracks(); progress = tracks.associate { it.id to downloads.progress(it) }; delay(1000) }
     }
-    TextButton(onClick = { open = true }) { Text("离线下载") }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("离线下载") }, text = {
+    AppTextButton(onClick = { open = true }) { Text("离线下载") }
+    if (open) AppDialog(onDismissRequest = { open = false }, title = { Text("离线下载") }, text = {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             item { Text("主动下载长期保留；自动音频缓存会随容量回收") }
             if (tracks.isEmpty()) item { Text("在歌曲的更多菜单中选择下载") }
@@ -103,11 +103,11 @@ fun OfflineLibraryButton(onPlay: (List<Song>, Int) -> Unit) {
                         else -> if ((state?.total ?: 0) > 0) "下载中 ${state!!.bytes * 100 / state.total}%" else "等待下载"
                     }, style = MaterialTheme.typography.bodySmall)
                     Row {
-                        TextButton(enabled = complete, onClick = { onPlay(listOf(track.song), 0) }) { Text("播放") }
-                        TextButton(onClick = { downloads.remove(track); tracks = downloads.tracks() }) { Text(if (state?.status == DownloadManager.STATUS_SUCCESSFUL) "删除文件" else "取消 / 移除") }
+                        AppTextButton(enabled = complete, onClick = { onPlay(listOf(track.song), 0) }) { Text("播放") }
+                        AppTextButton(onClick = { downloads.remove(track); tracks = downloads.tracks() }) { Text(if (state?.status == DownloadManager.STATUS_SUCCESSFUL) "删除文件" else "取消 / 移除") }
                     }
                 }
             }
         }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("关闭") } })
+    }, confirmButton = { AppTextButton(onClick = { open = false }) { Text("关闭") } })
 }

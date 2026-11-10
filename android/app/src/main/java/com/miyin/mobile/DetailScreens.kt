@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -35,6 +34,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,19 +50,28 @@ fun PlaylistDetailScreen(
     onPlay: (List<Song>, Int) -> Unit,
     onFavorite: (Song) -> Unit
 ) {
-    var detail by remember { mutableStateOf<PlaylistDetailResult?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val artwork = remember(context) { ArtworkCache.get(context) }
+    var detail by remember(playlist.id, localSongs) { mutableStateOf(
+        if (localSongs != null) PlaylistDetailResult(playlist, localSongs, localSongs.size) else api.cache.playlist(playlist.id)) }
+    var loading by remember(playlist.id) { mutableStateOf(detail == null) }
+    var error by remember(playlist.id) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(playlist.id, localSongs) {
-        loading = true
-        runCatching {
-            if (localSongs != null) PlaylistDetailResult(playlist, localSongs, localSongs.size)
-            else api.playlist(playlist.id)
+        loading = detail == null
+        error = null
+        try {
+            val fresh = if (localSongs != null) PlaylistDetailResult(playlist, localSongs, localSongs.size) else api.playlist(playlist.id)
+            if (fresh != detail) detail = fresh
+            if (localSongs == null) api.cache.savePlaylist(playlist.id, fresh)
+        } catch (e: CancellationException) { throw e
+        } catch (e: Exception) { error = e.userMessage("歌单刷新失败，稍后再试")
+        } finally { loading = false }
+    }
+    LaunchedEffect(playlist.id, detail) {
+        detail?.let { snapshot ->
+            artwork.warm((listOf(snapshot.playlist.cover) + snapshot.songs.map { it.img }).mapNotNull { api.imageUrl(it) }, refresh = true)
         }
-            .onSuccess { detail = it }
-            .onFailure { error = it.userMessage("歌单加载失败，请重试") }
-        loading = false
     }
 
     val songs = detail?.songs.orEmpty()
@@ -112,7 +122,7 @@ fun PlaylistDetailScreen(
         }
         item {
             if (localSongs == null) SavePublicPlaylist(api, playlist.id)
-            Button(
+            AppButton(
                 onClick = { if (songs.isNotEmpty()) onPlay(songs, 0) },
                 enabled = songs.isNotEmpty(),
                 shape = RoundedCornerShape(50),
@@ -133,7 +143,7 @@ fun PlaylistDetailScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             }
-            error != null -> item { EmptyHint(error!!) }
+            error != null && songs.isEmpty() -> item { EmptyHint(error!!) }
             songs.isEmpty() -> item { EmptyHint("歌单里还没有歌曲") }
             else -> itemsIndexed(songs, key = { _, song -> song.key }) { index, song ->
                 SongRow(
@@ -214,7 +224,7 @@ fun ChartDetailScreen(
             }
         }
         item {
-            Button(
+            AppButton(
                 onClick = { if (songs.isNotEmpty()) onPlay(songs, 0) },
                 enabled = songs.isNotEmpty(),
                 shape = RoundedCornerShape(50),
@@ -313,7 +323,7 @@ fun SingerDetailScreen(
             }
         }
         item {
-            androidx.compose.material3.TextButton(enabled = !moreBusy, onClick = {
+            AppTextButton(enabled = !moreBusy, onClick = {
                 if (actions?.requireLogin() == true) {
                     moreBusy = true
                     scope.launch {
@@ -327,7 +337,7 @@ fun SingerDetailScreen(
                     }
                 }
             }) { Text(if (actions?.library?.favoriteSingers?.any { it.id == info.id } == true) "取消关注" else "关注歌手") }
-            Button(onClick = { onPlay(songs, 0) }, enabled = songs.isNotEmpty(), modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+            AppButton(onClick = { onPlay(songs, 0) }, enabled = songs.isNotEmpty(), modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("播放全部")
@@ -340,7 +350,7 @@ fun SingerDetailScreen(
             error != null -> item {
                 Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     EmptyHint(error!!)
-                    Button(onClick = { attempt++ }) { Text("重试") }
+                    AppButton(onClick = { attempt++ }) { Text("重试") }
                 }
             }
             songs.isEmpty() -> item { EmptyHint("暂时没有热门歌曲") }
@@ -350,7 +360,7 @@ fun SingerDetailScreen(
             }
         }
         if (detail?.hasMore == true) item {
-            androidx.compose.material3.TextButton(enabled = !moreBusy, onClick = {
+            AppTextButton(enabled = !moreBusy, onClick = {
                 moreBusy = true
                 scope.launch {
                     try {

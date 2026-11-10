@@ -30,18 +30,18 @@ class ListeningStore(context: Context) {
 @Composable
 fun ListeningTools(player: PlayerController) {
     var open by remember { mutableStateOf(false) }
-    TextButton(onClick = { open = true }) { Text(if (player.stopAfterTrack) "本曲后停止" else if (player.sleepUntil > 0) "已定时" else "听歌设置") }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("听歌设置") }, text = {
+    AppTextButton(onClick = { open = true }) { Text(if (player.stopAfterTrack) "本曲后停止" else if (player.sleepUntil > 0) "已定时" else "听歌设置") }
+    if (open) AppDialog(onDismissRequest = { open = false }, title = { Text("听歌设置") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("睡眠定时")
             Row {
-                for (minute in listOf(15, 30, 60)) TextButton(onClick = { player.setSleep(minute); open = false }) { Text("${minute}分") }
+                for (minute in listOf(15, 30, 60)) AppTextButton(onClick = { player.setSleep(minute); open = false }) { Text("${minute}分") }
             }
-            TextButton(onClick = { player.setSleep(-1); open = false }) { Text("播完本曲停止") }
-            TextButton(onClick = { player.setSleep(0) }) { Text("取消定时") }
+            AppTextButton(onClick = { player.setSleep(-1); open = false }) { Text("播完本曲停止") }
+            AppTextButton(onClick = { player.setSleep(0) }) { Text("取消定时") }
             Text("歌词偏移 ${player.lyricOffsetMs / 1000f} 秒（正值提前）")
-            Slider(value = player.lyricOffsetMs.toFloat(), onValueChange = { player.setLyricOffset(it.toLong()) }, valueRange = -10000f..10000f, steps = 39)
-            TextButton(onClick = { player.setLyricOffset(0) }) { Text("重置偏移") }
+            AppSlider(value = player.lyricOffsetMs.toFloat(), onValueChange = { player.setLyricOffset(it.toLong()) }, valueRange = -10000f..10000f, steps = 39)
+            AppTextButton(onClick = { player.setLyricOffset(0) }) { Text("重置偏移") }
         }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("完成") } })
+    }, confirmButton = { AppTextButton(onClick = { open = false }) { Text("完成") } })
 }

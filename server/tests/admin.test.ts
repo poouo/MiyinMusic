@@ -226,6 +226,18 @@ function cachedPlaybackSong(quality: '128k' | '320k') {
   return track
 }
 
+test('source priority writes require an administrator and audit the saved order', async t => {
+  const reorder = t.mock.method(sourceManager, 'reorder', (ids: unknown) => {
+    assert.deepEqual(ids, ['test']); return [{ id: 'test', name: 'Test' }] as ReturnType<typeof sourceManager.reorder>
+  })
+  assert.equal((await request('/api/sources/order', 'PUT', { ids: ['test'] }, '')).status, 401)
+  assert.equal((await request('/api/sources/order', 'PUT', { ids: ['test'] }, userToken)).status, 403)
+  assert.equal(reorder.mock.callCount(), 0)
+  assert.equal((await request('/api/sources/order', 'PUT', { ids: ['test'] })).status, 200)
+  assert.equal(reorder.mock.callCount(), 1)
+  assert.ok(getDb().prepare("SELECT id FROM audit_log WHERE action = 'admin.sources.order'").get())
+})
+
 test('HQ playback resolves higher quality before using a standard server cache', async t => {
   const track = cachedPlaybackSong('128k')
   const resolve = t.mock.method(sourceManager, 'getMusicUrl', async (_song, qualities, _source, strict) => {

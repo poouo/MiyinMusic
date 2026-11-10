@@ -11,6 +11,7 @@ test('playlist URLs accept official desktop, mobile, hash and share text routes'
   for (const [url, id] of [
     ['https://y.qq.com/n/ryqq/playlist/123', 'tx-123'],
     ['https://i.y.qq.com/n2/m/share/details/taoge.html?disstid=456', 'tx-456'],
+    ['https://i2.y.qq.com/n3/other/pages/details/playlist.html?platform=11&appshare=android_qq&id=3204901235&ADTAG=wxfshare', 'tx-3204901235'],
     ['https://music.163.com/#/playlist?id=789', 'wy-789'],
     ['https://music.163.com/playlist?id=789', 'wy-789'],
   ]) {
@@ -19,7 +20,7 @@ test('playlist URLs accept official desktop, mobile, hash and share text routes'
   }
 })
 test('playlist resolver rejects credentials, custom ports, spoofed hosts and non-web protocols', () => {
-  for (const url of ['http://127.0.0.1/a', 'https://y.qq.com.evil.test/a', 'https://y.qq.com@evil.test/a', 'https://user:password@y.qq.com/a', 'https://y.qq.com:8443/a', 'file:///etc/passwd']) assert.throws(() => allowedPlaylistUrl(url))
+  for (const url of ['http://127.0.0.1/a', 'https://y.qq.com.evil.test/a', 'https://i2.y.qq.com.evil.test/playlist?id=1', 'https://y.qq.com@evil.test/a', 'https://user:password@y.qq.com/a', 'https://y.qq.com:8443/a', 'file:///etc/passwd']) assert.throws(() => allowedPlaylistUrl(url))
 })
 test('every share-link redirect is validated before fetching the next hop', async () => {
   let requests = 0

@@ -25,6 +25,19 @@ class AppCache(context: Context) {
         prefs.getString("home", null)?.let { json.decodeFromString<HomeData>(it) }
     }.getOrNull()
 
+    fun playlist(id: String): PlaylistDetailResult? = runCatching {
+        prefs.getString("playlist:$id", null)?.let { json.decodeFromString<PlaylistDetailResult>(it) }
+    }.getOrNull()
+
+    suspend fun savePlaylist(id: String, value: PlaylistDetailResult) = withContext(Dispatchers.IO) {
+        val encoded = json.encodeToString(value)
+        if (prefs.getString("playlist:$id", null) == encoded) return@withContext
+        val recent = (listOf(id) + prefs.getString("playlist-index", "").orEmpty().split('|').filter { it.isNotBlank() && it != id })
+        val editor = prefs.edit().putString("playlist:$id", encoded).putString("playlist-index", recent.take(20).joinToString("|"))
+        recent.drop(20).forEach { editor.remove("playlist:$it") }
+        editor.apply()
+    }
+
     fun session(): SessionSnapshot = changes.value ?: (runCatching {
         prefs.getString("session", null)?.let { json.decodeFromString<SessionSnapshot>(it) }
     }.getOrNull() ?: SessionSnapshot()).also { changes.value = it }

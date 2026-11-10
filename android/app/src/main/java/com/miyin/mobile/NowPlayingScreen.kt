@@ -49,11 +49,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -136,10 +132,10 @@ fun NowPlayingScreen(
                 onQueue = { showQueue = true }
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { lyricsExpanded = !lyricsExpanded }) {
+                AppTextButton(onClick = { lyricsExpanded = !lyricsExpanded }) {
                     Text(if (lyricsExpanded) "封面" else "展开歌词", style = MaterialTheme.typography.labelMedium)
                 }
-                TextButton(onClick = { showQuality = true }) {
+                AppTextButton(onClick = { showQuality = true }) {
                     Text("${player.qualityLabel.ifBlank { "音质" }} ⌄", style = MaterialTheme.typography.labelMedium)
                 }
             }
@@ -229,66 +225,8 @@ fun NowPlayingScreen(
 
     if (showQuality) QualitySheet(player) { showQuality = false }
 
-    if (showQueue) {
-        ModalBottomSheet(onDismissRequest = { showQueue = false }) {
-            Text(
-                "播放列表（" + player.queue.size + "）",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            Row { TextButton(onClick = { player.clearQueue(); showQueue = false }) { Text("清空队列") }; ListeningTools(player) }
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                itemsIndexed(player.queue, key = { _, s -> s.key }) { index, item ->
-                    ListEntrance(index) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                player.playAt(index)
-                                showQueue = false
-                            }
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            (index + 1).toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (index == player.queueIndex) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.width(26.dp)
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                item.name,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = if (index == player.queueIndex) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                item.singer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Column {
-                            Row {
-                                TextButton(enabled = index > 0, onClick = { player.moveQueue(index, index - 1) }, contentPadding = PaddingValues(4.dp)) { Text("上移") }
-                                TextButton(enabled = index < player.queue.lastIndex, onClick = { player.moveQueue(index, index + 1) }, contentPadding = PaddingValues(4.dp)) { Text("下移") }
-                            }
-                            TextButton(onClick = { player.removeFromQueue(index) }) { Text("移除") }
-                        }
-                    }
-                    }
-                }
-            }
-        }
-    }
+    if (showQueue) QueueSheet(api, player) { showQueue = false }
+
 }
 
 @Composable
@@ -502,7 +440,7 @@ private fun ProgressControls(player: PlayerController, onQueue: () -> Unit) {
     }
 
     val duration = max(player.durationMs, 1L)
-    Slider(
+    AppSlider(
         value = (pendingPosition ?: player.positionMs.toFloat()).coerceIn(0f, duration.toFloat()),
         onValueChange = { pendingPosition = it },
         onValueChangeFinished = {
@@ -510,11 +448,6 @@ private fun ProgressControls(player: PlayerController, onQueue: () -> Unit) {
             pendingPosition = null
         },
         valueRange = 0f..duration.toFloat(),
-        colors = SliderDefaults.colors(
-            thumbColor = MaterialTheme.colorScheme.primary,
-            activeTrackColor = MaterialTheme.colorScheme.primary,
-            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-        ),
         modifier = Modifier.fillMaxWidth()
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

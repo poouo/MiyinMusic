@@ -23,6 +23,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,9 +64,16 @@ fun CoverImage(
             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
             modifier = Modifier.align(Alignment.Center).size(28.dp))
         val image = api.imageUrl(url)
+        val context = LocalContext.current
         if (image != null) {
+            val artwork = remember(context) { ArtworkCache.get(context) }
+            val cached by remember(image, artwork) { artwork.entry(image) }.collectAsState()
+            LaunchedEffect(image) { artwork.warm(listOf(image)) }
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(image).crossfade(280).build(),
+                model = remember(image, context, cached) {
+                    ImageRequest.Builder(context).data(cached?.file ?: image)
+                        .memoryCacheKey(if (cached != null) image + ":" + cached!!.version else image).crossfade(false).build()
+                },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize()
@@ -73,7 +84,7 @@ fun CoverImage(
 
 @Composable
 fun QualityBadge(song: Song) {
-    val quality = song.qualities.firstOrNull() ?: return
+    val quality = listOf("flac24bit", "flac", "320k", "128k").firstOrNull { it in song.qualities } ?: return
     val (text, color) = when (quality) {
         "flac24bit" -> "Hi-Res" to Color(0xFFF5C45C)
         "flac" -> "SQ" to Color(0xFF2FD07F)

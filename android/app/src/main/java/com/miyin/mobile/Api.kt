@@ -4,6 +4,13 @@ import android.content.Context
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -19,6 +26,19 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 class ApiException(val statusCode: Int, override val message: String) : Exception(message)
+
+private suspend fun Call.payload(): Pair<Int, String> = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation { cancel() }
+    enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) { if (continuation.isActive) continuation.resumeWithException(e) }
+        override fun onResponse(call: Call, response: Response) {
+            try {
+                val payload = response.use { it.code to it.body?.string().orEmpty() }
+                if (continuation.isActive) continuation.resume(payload)
+            } catch (e: Exception) { if (continuation.isActive) continuation.resumeWithException(e) }
+        }
+    })
+}
 
 class PersistentCookieJar(context: Context) : CookieJar {
     private val prefs = context.getSharedPreferences("miyin_cookies", Context.MODE_PRIVATE)
@@ -99,17 +119,15 @@ class ApiClient(context: Context) {
                 "DELETE" -> builder.delete()
                 else -> builder.method(method, (body ?: "").toRequestBody(JSON_TYPE))
             }
-            client.newCall(builder.build()).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!path.startsWith("/api/auth/") && session != cookieHeader()) throw kotlinx.coroutines.CancellationException("账号已切换，忽略旧请求")
-                if (!response.isSuccessful) {
-                    val message = runCatching {
-                        json.decodeFromString<ApiErrorEnvelope>(text).error?.message
-                    }.getOrNull().orEmpty().ifBlank { "请求失败（" + response.code + "）" }
-                    throw ApiException(response.code, message)
-                }
-                text
+            val (status, text) = client.newCall(builder.build()).payload()
+            if (!path.startsWith("/api/auth/") && session != cookieHeader()) throw kotlinx.coroutines.CancellationException("账号已切换，忽略旧请求")
+            if (status !in 200..299) {
+                val message = runCatching {
+                    json.decodeFromString<ApiErrorEnvelope>(text).error?.message
+                }.getOrNull().orEmpty().ifBlank { "请求失败（" + status + "）" }
+                throw ApiException(status, message)
             }
+            text
         }
 
     suspend inline fun <reified T> get(path: String): T =
@@ -251,15 +269,10 @@ class ApiClient(context: Context) {
     suspend fun lyric(song: Song): LyricResult =
         post<LyricRequest, LyricResponse>("/api/lyric", LyricRequest(song)).lyric
 
-    suspend fun playUrl(song: Song): UrlResult =
+    suspend fun playUrl(song: Song, qualities: List<String> = PlaybackQuality.order(AppPrefs(appContext).preferredQuality)): UrlResult =
         post<UrlRequest, UrlResult>(
             "/api/url",
-            UrlRequest(song, when (AppPrefs(appContext).preferredQuality) {
-                "flac24bit" -> listOf("flac24bit", "flac", "320k", "128k")
-                "flac" -> listOf("flac", "320k", "128k")
-                "128k" -> listOf("128k")
-                else -> listOf("320k", "128k")
-            })
+            UrlRequest(song, qualities)
         )
 
     fun absoluteUrl(url: String): String =

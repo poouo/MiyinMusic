@@ -89,7 +89,8 @@ async function once(url: string, options: RequestOptions): Promise<ClientRespons
   const timeoutMs = options.timeoutMs ?? 15000
   const controller = new AbortController()
   const onAbort = () => controller.abort()
-  options.signal?.addEventListener('abort', onAbort, { once: true })
+  if (options.signal?.aborted) onAbort()
+  else options.signal?.addEventListener('abort', onAbort, { once: true })
   const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
 
   const headers: Record<string, string> = { 'User-Agent': DEFAULT_UA, ...options.headers }

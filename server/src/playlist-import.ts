@@ -2,7 +2,7 @@ import { HttpError } from './errors.js'
 import { getPlaylist } from './discover.js'
 import type { PlaylistDetail, Song } from './types.js'
 
-const hosts = new Set(['y.qq.com', 'i.y.qq.com', 'c.y.qq.com', 'music.qq.com', 'music.163.com', 'y.music.163.com', 'm.music.163.com', '163cn.tv'])
+const hosts = new Set(['y.qq.com', 'i.y.qq.com', 'i2.y.qq.com', 'c.y.qq.com', 'music.qq.com', 'music.163.com', 'y.music.163.com', 'm.music.163.com', '163cn.tv'])
 export function allowedPlaylistUrl(value: string): URL {
   let url: URL
   try { url = new URL(value) } catch { throw new HttpError(400, '歌单链接格式不正确') }

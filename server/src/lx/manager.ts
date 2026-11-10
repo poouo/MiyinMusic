@@ -2,12 +2,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { config } from '../config.js'
 import { logger } from '../log.js'
+import { HttpError } from '../errors.js'
+import { assertPublicUrl } from '../stream.js'
 import { request } from '../http-client.js'
 import type { MusicUrlResult, Platform, Quality, Song } from '../types.js'
 import { PLATFORM_NAMES, PLATFORMS, QUALITIES } from '../types.js'
 import { BUILTIN_SOURCES, candidateUrls } from './catalog.js'
 import { listSources, saveSources } from './repo.js'
 import { SourceRuntime, type LxInited } from './sandbox.js'
+import { resolvePrioritized, ResolutionPool } from './resolve.js'
 
 const log = logger('sources')
 
@@ -90,11 +93,14 @@ function toError(err: unknown): Error {
   return new Error(String(err))
 }
 
-class SourceManager {
+export class SourceManager {
   private sources = new Map<string, SourceState>()
   private loading = new Map<string, Promise<void>>()
   private urlCache = new Map<string, { value: MusicUrlResult; expire: number }>()
   private pending = new Map<string, Promise<MusicUrlResult>>()
+  private revision = 0
+  private unhealthy = new Map<string, { failures: number; retryAt: number }>()
+  private resolutionPool = new ResolutionPool()
   private bootstrapped: Promise<void> | null = null
   private updateState: SourceUpdateState = {
     running: false,
@@ -116,7 +122,7 @@ class SourceManager {
     const persisted = this.readState()
     const persistedMap = new Map(persisted.map((s) => [s.id, s]))
 
-    let order = 0
+    let order = Math.max(-1, ...persisted.map(s => s.order ?? 0)) + 1
     for (const builtin of BUILTIN_SOURCES) {
       const saved = persistedMap.get(builtin.id)
       this.sources.set(builtin.id, {
@@ -142,6 +148,8 @@ class SourceManager {
         stats: { ok: 0, fail: 0 },
       })
     }
+    const ordered = [...this.sources.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    ordered.forEach((source, index) => { source.order = index })
     this.writeState()
 
     const scheduled: Promise<void>[] = []
@@ -342,6 +350,25 @@ class SourceManager {
       .map((s) => this.toPublic(s))
   }
 
+  reorder(ids: unknown): PublicSource[] {
+    if (!Array.isArray(ids) || ids.length !== this.sources.size || new Set(ids).size !== ids.length ||
+      ids.some(id => typeof id !== 'string' || !this.sources.has(id))) {
+      throw new HttpError(400, '音源列表已变化，请刷新后重新排序')
+    }
+    // Commit to disk first: a failed save must leave the previous order intact.
+    const ordered = ids.map((id, order) => ({ ...this.sources.get(id)!, order }))
+    saveSources(ordered)
+    for (const source of ordered) this.sources.get(source.id)!.order = source.order
+    this.invalidateUrls()
+    this.unhealthy.clear()
+    return this.list()
+  }
+
+  private invalidateUrls(): void {
+    this.revision++
+    this.urlCache.clear()
+  }
+
   private toPublic(s: SourceState): PublicSource {
     return {
       id: s.id,
@@ -367,6 +394,8 @@ class SourceManager {
     const source = this.sources.get(id)
     if (!source) throw new Error('音源不存在')
     await this.doLoad(id)
+    this.invalidateUrls()
+    for (const key of this.unhealthy.keys()) if (key.startsWith(id + ':')) this.unhealthy.delete(key)
     return this.toPublic(source)
   }
 
@@ -374,6 +403,7 @@ class SourceManager {
     const source = this.sources.get(id)
     if (!source) throw new Error('音源不存在')
     source.enabled = enabled
+    this.invalidateUrls()
     this.writeState()
     if (enabled && source.status !== 'ready') void this.load(id).catch(() => undefined)
     return this.toPublic(source)
@@ -389,13 +419,14 @@ class SourceManager {
       url: input.url,
       script: script ?? undefined,
       enabled: true,
-      order: this.sources.size,
+      order: Math.max(-1, ...[...this.sources.values()].map(s => s.order ?? 0)) + 1,
       status: 'idle',
       meta: { name: input.name || '自定义音源' },
       platforms: {},
       stats: { ok: 0, fail: 0 },
     }
     this.sources.set(id, source)
+    this.invalidateUrls()
     this.writeState()
     if (!script && input.url) {
       script = await this.downloadScript(source)
@@ -413,6 +444,7 @@ class SourceManager {
     if (source.kind === 'builtin') throw new Error('内置音源不能删除，可以关闭')
     source.runtime?.dispose()
     this.sources.delete(id)
+    this.invalidateUrls()
     try {
       fs.rmSync(this.cacheFile(id), { force: true })
     } catch {
@@ -495,7 +527,7 @@ class SourceManager {
 
   /** 支持指定平台且提供播放地址的音源 */
   private candidates(platform: Platform): SourceState[] {
-    return [...this.sources.values()].filter(
+    return [...this.sources.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).filter(
       (s) =>
         s.enabled &&
         s.status === 'ready' &&
@@ -522,7 +554,8 @@ class SourceManager {
     strictQualities = false,
   ): Promise<MusicUrlResult> {
     const key =
-      song.platform + '_' + song.songmid + '_' + preferred.join(',') + '_' + (onlySourceId ?? '*') + (strictQualities ? '!s' : '')
+      this.revision + ':' + song.platform + '_' + song.songmid + '_' + preferred.join(',') + '_' + (onlySourceId ?? '*') + (strictQualities ? '!s' : '')
+    const revision = this.revision
     const cached = this.urlCache.get(key)
     if (cached && cached.expire > Date.now()) return cached.value
 
@@ -531,7 +564,7 @@ class SourceManager {
 
     const task = this.resolveUrl(song, preferred, onlySourceId, strictQualities)
       .then((result) => {
-        this.urlCache.set(key, { value: result, expire: Date.now() + 4 * 60_000 })
+        if (revision === this.revision) this.urlCache.set(key, { value: result, expire: Date.now() + 4 * 60_000 })
         return result
       })
       .finally(() => this.pending.delete(key))
@@ -579,37 +612,67 @@ class SourceManager {
     if (!order.length) throw new Error('该歌曲没有可用音质')
     const musicInfo = this.toMusicInfo(song)
     let lastError: Error | null = null
+    // Finish before the HTTP route's 12-second deadline, including quality fallback.
+    const deadline = Date.now() + 10500
 
-    for (const quality of order) {
+    for (const [qualityIndex, quality] of order.entries()) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      const budgetMs = qualityIndex === order.length - 1 ? remaining : Math.min(7000, remaining - (order.length - qualityIndex - 1) * 1500)
+      if (budgetMs <= 0) continue
       const usable = candidates.filter((c) => {
         const q = c.platforms[song.platform]?.qualitys ?? []
         return q.length === 0 || q.includes(quality)
       })
       if (!usable.length) continue
-      const race = onlySourceId ? usable.slice(0, 1) : usable.slice(0, 3)
+      // Preserve the administrator's order within each group. Only repeated
+      // connection failures get a short cooldown; missing songs do not.
+      const now = Date.now()
+      if (!onlySourceId) usable.sort((a, b) =>
+        Number((this.unhealthy.get(a.id + ':' + song.platform)?.retryAt ?? 0) > now) -
+        Number((this.unhealthy.get(b.id + ':' + song.platform)?.retryAt ?? 0) > now))
       try {
-        const result = await Promise.any(
-          race.map(async (source) => {
-            const value = await source.runtime!.request({
-              action: 'musicUrl',
-              source: song.platform,
-              info: { type: quality, musicInfo },
-            })
-            if (typeof value !== 'string' || !/^https?:\/\//.test(value)) {
-              throw new Error('音源返回的播放地址无效')
+        const result = await resolvePrioritized(
+          usable.map(source => async (signal: AbortSignal) => {
+            const healthKey = source.id + ':' + song.platform
+            let started = false
+            try {
+              return await this.resolutionPool.run(source.id, signal, async () => {
+                started = true
+                const value = await source.runtime!.request({
+                  action: 'musicUrl',
+                  source: song.platform,
+                  info: { type: quality, musicInfo },
+                }, signal)
+                if (typeof value !== 'string' || !/^https?:\/\//.test(value)) {
+                  throw new Error('音源返回的播放地址无效')
+                }
+                // Invalid/private/unresolvable addresses must not win the race.
+                await assertPublicUrl(value)
+                signal.throwIfAborted()
+                source.stats.ok++
+                source.stats.lastOkAt = Date.now()
+                source.stats.lastError = undefined
+                this.unhealthy.delete(healthKey)
+                return { url: value, quality, sourceId: source.id, sourceName: source.meta.name ?? source.name, platform: song.platform }
+              })
+            } catch (error) {
+              if (!started || (signal.aborted && signal.reason?.name === 'AbortError')) throw error
+              const message = toError(error).message
+              source.stats.fail++
+              source.stats.lastError = message
+              if (/timeout|超时|fetch failed|block.?ip|ECONN|ENOTFOUND|域名解析失败/i.test(message)) {
+                const failures = (this.unhealthy.get(healthKey)?.failures ?? 0) + 1
+                this.unhealthy.set(healthKey, { failures, retryAt: failures >= 2 ? Date.now() + 30000 : 0 })
+              }
+              throw error
             }
-            source.stats.ok++
-            source.stats.lastOkAt = Date.now()
-            return { url: value, quality, sourceId: source.id, sourceName: source.meta.name ?? source.name, platform: song.platform }
           }),
+          { budgetMs, attemptMs: onlySourceId ? budgetMs : Math.min(7000, budgetMs) },
         )
         return result
       } catch (err) {
         lastError = this.aggregateError(err)
-        for (const source of race) {
-          source.stats.fail++
-          source.stats.lastError = lastError.message
-        }
       }
     }
     throw new Error(lastError?.message ?? '所有音源都无法获取该歌曲的播放地址')

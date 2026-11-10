@@ -5,13 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,12 +26,12 @@ fun ImportPlaylistDialog(api: ApiClient, onClose: () -> Unit, onImported: (Libra
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    AlertDialog(
+    AppDialog(
         onDismissRequest = { if (!loading) onClose() },
         title = { Text("导入外链歌单") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                AppField(
                     value = link,
                     onValueChange = { link = it; preview = null; error = null },
                     enabled = !loading,
@@ -67,7 +63,7 @@ fun ImportPlaylistDialog(api: ApiClient, onClose: () -> Unit, onImported: (Libra
             }
         },
         confirmButton = {
-            Button(enabled = link.isNotBlank() && !loading, onClick = {
+            AppButton(enabled = link.isNotBlank() && !loading, onClick = {
                 scope.launch {
                     loading = true
                     error = null
@@ -85,7 +81,7 @@ fun ImportPlaylistDialog(api: ApiClient, onClose: () -> Unit, onImported: (Libra
                 }
             }) { Text(if (preview == null) "读取歌单" else "导入歌单") }
         },
-        dismissButton = { TextButton(enabled = !loading, onClick = onClose) { Text("取消") } },
+        dismissButton = { AppTextButton(enabled = !loading, onClick = onClose) { Text("取消") } },
         shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp)
     )
 }

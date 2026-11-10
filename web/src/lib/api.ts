@@ -88,6 +88,7 @@ export const api = {
   config: () => request<AppConfig>('/api/config'),
 
   sources: () => request<{ sources: SourceInfo[] }>('/api/sources'),
+  reorderSources: (ids: string[]) => request<{ sources: SourceInfo[] }>('/api/sources/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
   addSource: (body: { name?: string; url?: string; script?: string }) =>
     request<{ source: SourceInfo }>('/api/sources', { method: 'POST', body: JSON.stringify(body) }),
   updateSource: (id: string, body: { enabled: boolean }) =>

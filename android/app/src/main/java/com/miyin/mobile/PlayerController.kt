@@ -45,6 +45,9 @@ class PlayerController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var loadJob: Job? = null
     private var wantsPlayback = false
+    private var requestedQualities = emptyList<String>()
+    private var loadedQuality: String? = null
+    private var loadedOffline = false
     private val listeningStore = ListeningStore(appContext)
     private data class Prefetched(val key: String, val at: Long, var result: UrlResult? = null)
     private var prefetched: Prefetched? = null
@@ -95,8 +98,14 @@ class PlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val song = current
+            val lower = if (loadedOffline) requestedQualities else PlaybackQuality.below(loadedQuality, requestedQualities)
+            if (song != null && lower.isNotEmpty() && exoPlayer.currentMediaItem?.mediaId == song.key) {
+                loadSong(song, positionMs, wantsPlayback, lower, useOffline = false)
+                return
+            }
             isBuffering = false
-            errorMessage = "播放失败：音频源暂不可用，请切换音质或重试"
+            errorMessage = "播放失败：已尝试可用音质，请稍后重试"
         }
     }
 
@@ -219,6 +228,7 @@ class PlayerController(
         queue = emptyList(); queueIndex = -1; current = null
         lyrics = emptyList(); positionMs = 0; durationMs = 0
         isPlaying = false; isBuffering = false; shuffleHistory.clear()
+        wantsPlayback = false; requestedQualities = emptyList(); loadedQuality = null; loadedOffline = false
         checkpoint()
     }
 
@@ -228,9 +238,13 @@ class PlayerController(
         loadSong(queue[index])
     }
 
-    private fun loadSong(song: Song, startPositionMs: Long = 0L, autoPlay: Boolean = true) {
+    private fun loadSong(song: Song, startPositionMs: Long = 0L, autoPlay: Boolean = true,
+        qualities: List<String> = PlaybackQuality.order(preferredQuality), useOffline: Boolean = true) {
         loadJob?.cancel()
         wantsPlayback = autoPlay
+        requestedQualities = qualities
+        loadedQuality = null
+        loadedOffline = false
         exoPlayer.pause()
         exoPlayer.clearMediaItems()
         current = song
@@ -247,11 +261,13 @@ class PlayerController(
 
         loadJob = scope.launch {
             try {
-                val offline = OfflineDownloads(appContext).completed(song.key)
-                val cached = prefetched?.takeIf { it.key == song.key + ":" + preferredQuality && System.currentTimeMillis() - it.at < 45000 }?.result
+                val offline = if (useOffline) OfflineDownloads(appContext).completed(song.key) else null
+                val cached = prefetched?.takeIf { qualities == PlaybackQuality.order(preferredQuality) && it.key == song.key + ":" + preferredQuality && System.currentTimeMillis() - it.at < 45000 }?.result
                 prefetched = null
-                val result = if (offline != null) UrlResult(playUrl = java.io.File(offline.path).toURI().toString(), quality = offline.quality) else cached ?: api.playUrl(song)
+                val result = if (offline != null) UrlResult(playUrl = java.io.File(offline.path).toURI().toString(), quality = offline.quality) else cached ?: api.playUrl(song, qualities)
                 if (result.playUrl.isBlank()) throw IllegalStateException("没有获取到播放地址")
+                loadedQuality = result.quality
+                loadedOffline = offline != null
                 qualityLabel = when (result.quality) {
                     "flac24bit" -> "Hi-Res"
                     "flac" -> "SQ"
@@ -305,6 +321,11 @@ class PlayerController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                val lower = PlaybackQuality.below(loadedQuality, qualities)
+                if (lower.isNotEmpty() && PlaybackQuality.canRetry((e as? ApiException)?.statusCode)) {
+                    loadSong(song, startPositionMs, autoPlay, lower, useOffline = false)
+                    return@launch
+                }
                 isBuffering = false
                 errorMessage = e.userMessage("无法播放这首歌，请稍后重试")
             }
@@ -315,7 +336,8 @@ class PlayerController(
         if (current == null) return
         if (isBuffering && wantsPlayback) { wantsPlayback = false; loadJob?.cancel(); exoPlayer.pause(); isBuffering = false; return }
         if (exoPlayer.mediaItemCount == 0) { loadSong(current!!, positionMs); return }
-        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+        wantsPlayback = !exoPlayer.isPlaying
+        if (exoPlayer.isPlaying) exoPlayer.pause() else if (exoPlayer.playerError != null) loadSong(current!!, positionMs) else exoPlayer.play()
     }
 
     fun setDefaultQuality(value: String) {

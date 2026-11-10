@@ -1,6 +1,7 @@
 import vm from 'node:vm'
 import crypto from 'node:crypto'
 import zlib from 'node:zlib'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { request as httpRequest, type RequestOptions } from '../http-client.js'
 
 export const EVENT_NAMES = {
@@ -57,6 +58,7 @@ export class SourceRuntime {
   private initedResolve: ((v: LxInited) => void) | null = null
   private initedPromise: Promise<LxInited> | null = null
   private activeRequests = new Set<AbortController>()
+  private actionSignal = new AsyncLocalStorage<AbortSignal>()
   private disposed = false
   readonly script: string
 
@@ -121,6 +123,10 @@ export class SourceRuntime {
        */
       request(url: string, opts: Record<string, unknown> = {}, callback?: (...a: unknown[]) => void) {
         const controller = new AbortController()
+        const actionSignal = runtime.actionSignal.getStore()
+        const cancel = () => controller.abort(actionSignal?.reason)
+        if (actionSignal?.aborted) cancel()
+        else actionSignal?.addEventListener('abort', cancel, { once: true })
         runtime.activeRequests.add(controller)
         const cb = typeof callback === 'function' ? callback : () => {}
         const timeout = Number(opts.timeout) > 0 ? Math.min(Number(opts.timeout), 30000) : 20000
@@ -136,7 +142,7 @@ export class SourceRuntime {
         if (opts.formData && !reqOpts.form) reqOpts.form = opts.formData as Record<string, unknown>
         httpRequest(url, reqOpts)
           .then((res) => {
-            if (runtime.disposed) return
+            if (runtime.disposed || actionSignal?.aborted) return
             const resp = {
               statusCode: res.status,
               statusMessage: '',
@@ -148,10 +154,11 @@ export class SourceRuntime {
             cb.call(lx, null, resp, resp.body)
           })
           .catch((err: unknown) => {
-            if (runtime.disposed) return
+            if (runtime.disposed || actionSignal?.aborted) return
             cb.call(lx, err instanceof Error ? err : new Error(String(err)), null, null)
           })
           .finally(() => {
+            actionSignal?.removeEventListener('abort', cancel)
             runtime.activeRequests.delete(controller)
           })
         return () => controller.abort()
@@ -314,14 +321,22 @@ export class SourceRuntime {
   }
 
   /** 调用脚本注册的 `request` 事件处理器 */
-  async request(payload: LxRequestPayload): Promise<unknown> {
+  async request(payload: LxRequestPayload, signal?: AbortSignal): Promise<unknown> {
     if (!this.handler) throw new Error('音源脚本尚未就绪')
     const timeoutMs = this.sandboxOptions.actionTimeoutMs ?? 12000
     let timer: ReturnType<typeof setTimeout> | undefined
+    const controller = new AbortController()
+    const cancel = () => controller.abort(signal?.reason)
+    if (signal?.aborted) cancel()
+    else signal?.addEventListener('abort', cancel, { once: true })
+    let onAbort: (() => void) | undefined
     try {
-      const result = this.handler(payload)
+      controller.signal.throwIfAborted()
+      const result = this.actionSignal.run(controller.signal, () => this.handler!(payload))
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('音源响应超时')), timeoutMs)
+        onAbort = () => reject(controller.signal.reason)
+        controller.signal.addEventListener('abort', onAbort, { once: true })
+        timer = setTimeout(() => controller.abort(new Error('音源响应超时')), timeoutMs)
       })
       // 让 Promise.race 不因脚本抛出的 rejection 造成未处理警告
       const settled = Promise.resolve(result)
@@ -331,6 +346,9 @@ export class SourceRuntime {
       throw toError(err)
     } finally {
       if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', cancel)
+      if (onAbort) controller.signal.removeEventListener('abort', onAbort)
+      controller.abort()
     }
   }
 

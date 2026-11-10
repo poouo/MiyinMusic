@@ -34,11 +34,11 @@ fun CatalogDialog(api: ApiClient, id: String?, player: PlayerController, onClose
             Column(Modifier.statusBarsPadding().navigationBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(album?.name ?: if (id == null) "为你选歌" else "专辑", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClose) { Text("返回") }
+                    AppTextButton(onClick = onClose) { Text("返回") }
                 }
                 when {
                     loading -> CircularProgressIndicator(Modifier.padding(24.dp))
-                    error != null -> Column(Modifier.padding(20.dp)) { Text(error!!); TextButton(onClick = { attempt++ }) { Text("重试") } }
+                    error != null -> Column(Modifier.padding(20.dp)) { Text(error!!); AppTextButton(onClick = { attempt++ }) { Text("重试") } }
                     songs.isEmpty() -> Text("暂无可读取歌曲", Modifier.padding(20.dp))
                     else -> LazyColumn {
                         itemsIndexed(songs, key = { index, song -> song.key + index }) { index, song ->
@@ -66,14 +66,14 @@ fun DiscoveryTools() {
     var recommendations by remember { mutableStateOf(false) }
     var following by remember { mutableStateOf(false) }
     Row(Modifier.padding(horizontal = 16.dp)) {
-        TextButton(onClick = { recommendations = true }) { Text("为你选歌") }
-        TextButton(onClick = { following = true }) { Text("关注的歌手 · ${actions.library.favoriteSingers.size}") }
+        AppTextButton(onClick = { recommendations = true }) { Text("为你选歌") }
+        AppTextButton(onClick = { following = true }) { Text("关注的歌手 · ${actions.library.favoriteSingers.size}") }
     }
     if (recommendations) CatalogDialog(actions.api, null, actions.player) { recommendations = false }
-    if (following) AlertDialog(onDismissRequest = { following = false }, title = { Text("关注的歌手") }, text = {
+    if (following) AppDialog(onDismissRequest = { following = false }, title = { Text("关注的歌手") }, text = {
         LazyColumn(Modifier.heightIn(max = 360.dp)) {
             if (actions.library.favoriteSingers.isEmpty()) item { Text("在歌手详情页关注，三端同步") }
-            itemsIndexed(actions.library.favoriteSingers) { _, singer -> TextButton(onClick = { following = false; actions.openSinger(singer) }) { Text(singer.name) } }
+            itemsIndexed(actions.library.favoriteSingers) { _, singer -> AppTextButton(onClick = { following = false; actions.openSinger(singer) }) { Text(singer.name) } }
         }
-    }, confirmButton = { TextButton(onClick = { following = false }) { Text("关闭") } })
+    }, confirmButton = { AppTextButton(onClick = { following = false }) { Text("关闭") } })
 }

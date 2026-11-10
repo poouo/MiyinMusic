@@ -35,6 +35,8 @@ import {
   ArrowLeftIcon,
   BanIcon,
   CheckIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
   CrownIcon,
   DatabaseIcon,
   DownloadIcon,
@@ -680,12 +682,19 @@ function SourcesSection() {
   const toast = useToast()
   const [sources, setSources] = useState<SourceInfo[]>([])
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedIds, setSavedIds] = useState<string[]>([])
+  const [dragged, setDragged] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const dirty = sources.map(s => s.id).join(',') !== savedIds.join(',')
+  const busy = loading || saving
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const result = await api.sources()
       setSources(result.sources)
+      setSavedIds(result.sources.map(s => s.id))
     } catch (err) {
       toast.error('加载音源失败：' + (err as Error).message)
     } finally {
@@ -697,26 +706,67 @@ function SourcesSection() {
     void load()
   }, [load])
 
+  const move = (id: string, targetId: string) => {
+    if (busy || id === targetId) return
+    setSources(current => {
+      const from = current.findIndex(s => s.id === id)
+      const to = current.findIndex(s => s.id === targetId)
+      if (from < 0 || to < 0) return current
+      const next = [...current]
+      next.splice(to, 0, next.splice(from, 1)[0])
+      return next
+    })
+  }
+  const save = async () => {
+    setSaving(true)
+    try {
+      const result = await api.reorderSources(sources.map(s => s.id))
+      setSources(result.sources)
+      setSavedIds(result.sources.map(s => s.id))
+      toast.success('音源优先级已保存，下次解析生效')
+    } catch (error) { toast.error('保存失败：' + (error as Error).message) }
+    finally { setSaving(false) }
+  }
+
   return (
     <div className="stack gap-16">
       <div className="admin-toolbar glass">
         <div className="grow">
           <div style={{ fontWeight: 700 }}>音源脚本</div>
-          <div className="faint" style={{ fontSize: 12 }}>脚本在服务端运行，负责把歌曲解析成可播放地址</div>
+          <div className="faint" style={{ fontSize: 12 }}>拖动手柄或点击上下箭头排序，靠前的音源优先尝试；响应慢时自动尝试后备音源。</div>
         </div>
-        <button className="btn btn--sm" onClick={() => void load()} disabled={loading}>
-          <RefreshIcon size={14} /> 刷新
+        {dirty && <button className="btn btn--sm btn--primary" onClick={() => void save()} disabled={busy}>{saving ? '保存中…' : '保存优先级'}</button>}
+        <button className="btn btn--sm" onClick={() => void load()} disabled={busy}>
+          <RefreshIcon size={14} /> {dirty ? '撤销排序' : '刷新'}
         </button>
       </div>
 
       <div className="admin-table-wrap glass">
         <table className="admin-table">
           <thead>
-            <tr><th>音源</th><th>平台</th><th>状态</th><th className="right">操作</th></tr>
+            <tr><th>优先级</th><th>音源</th><th>平台</th><th>状态</th><th className="right">操作</th></tr>
           </thead>
           <tbody>
-            {sources.map((source) => (
-              <tr key={source.id}>
+            {sources.map((source, index) => (
+              <tr key={source.id}
+                className={(dragged === source.id ? 'source-row--dragging ' : '') + (dropTarget === source.id ? 'source-row--target' : '')}
+                onDragOver={event => { if (dragged && !busy) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropTarget(source.id) } }}
+                onDrop={event => { event.preventDefault(); if (dragged) move(dragged, source.id); setDragged(null); setDropTarget(null) }}
+              >
+                <td>
+                  <div className="source-priority">
+                    <button className="icon-btn source-drag" draggable={!busy} disabled={busy}
+                      aria-label={'拖动调整 ' + source.name + ' 的优先级'} title="拖动排序，也可以使用右侧上下箭头"
+                      onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', source.id); setDragged(source.id) }}
+                      onDragEnd={() => { setDragged(null); setDropTarget(null) }}
+                    ><svg width="16" height="20" viewBox="0 0 16 20" fill="currentColor" aria-hidden="true">{[5, 10, 15].map(y => <g key={y}><circle cx="5" cy={y} r="1.3" /><circle cx="11" cy={y} r="1.3" /></g>)}</svg></button>
+                    <span className="source-rank">{index + 1}</span>
+                    <div className="source-priority__steps">
+                      <button className="icon-btn" disabled={busy || index === 0} aria-label={'提高 ' + source.name + ' 的优先级'} onClick={() => move(source.id, sources[index - 1].id)}><ChevronUpIcon size={14} /></button>
+                      <button className="icon-btn" disabled={busy || index === sources.length - 1} aria-label={'降低 ' + source.name + ' 的优先级'} onClick={() => move(source.id, sources[index + 1].id)}><ChevronDownIcon size={14} /></button>
+                    </div>
+                  </div>
+                </td>
                 <td>
                   <div style={{ fontWeight: 600 }}>{source.name}</div>
                   <div className="faint" style={{ fontSize: 11 }}>
@@ -731,16 +781,18 @@ function SourcesSection() {
                 </td>
                 <td>
                   <span className={'status-chip' + (source.status === 'ready' ? '' : ' is-off')}>
-                    {source.status === 'ready' ? '可用' : source.status === 'loading' ? '加载中' : '不可用'}
+                    {source.status === 'ready' ? '已就绪' : source.status === 'loading' ? '加载中' : '不可用'}
                   </span>
+                  <div className="faint" style={{ fontSize: 11, marginTop: 5 }}>解析成功 {source.stats.ok} · 失败 {source.stats.fail}</div>
                 </td>
                 <td>
                   <div className="admin-actions">
-                    <button className="icon-btn" title="重新加载" onClick={() => void api.reloadSource(source.id).then(load).catch((err: Error) => toast.error(err.message))}>
+                    <button className="icon-btn" title={dirty ? '请先保存或撤销排序' : '重新加载'} disabled={busy || dirty} onClick={() => void api.reloadSource(source.id).then(load).catch((err: Error) => toast.error(err.message))}>
                       <RefreshIcon size={15} />
                     </button>
                     <button
                       className={'switch' + (source.enabled ? ' is-on' : '')}
+                      disabled={busy || dirty}
                       onClick={() => void api.updateSource(source.id, { enabled: !source.enabled }).then(load).catch((err: Error) => toast.error(err.message))}
                       aria-label="启用音源"
                     />

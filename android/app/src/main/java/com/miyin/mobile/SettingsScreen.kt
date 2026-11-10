@@ -19,15 +19,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import android.content.Intent
 import android.provider.Settings
 import androidx.core.net.toUri
@@ -100,7 +95,8 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
     suspend fun usage(): String = withContext(Dispatchers.IO) {
         val audio = PlaybackCache.get(context).cacheSpace / 1024.0 / 1024.0
         val artwork = (context.imageLoader.diskCache?.size ?: 0) / 1024.0 / 1024.0
-        "音频 %.1f MB · 封面 %.1f MB".format(audio, artwork)
+        val snapshots = ArtworkCache.get(context).bytes() / 1024.0 / 1024.0
+        "音频 %.1f MB · 封面 %.1f MB".format(audio, artwork + snapshots)
     }
     LaunchedEffect(Unit) { cacheUsage = usage() }
 
@@ -171,7 +167,7 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                     SettingSwitch("锁定歌词位置", "", lyricLocked) {
                         lyricLocked = it; prefs.lyricLocked = it; DesktopLyrics.configure(context)
                     }
-                    TextButton(onClick = { prefs.lyricY = 160; prefs.lyricLocked = false; lyricLocked = false; DesktopLyrics.configure(context) }) {
+                    AppTextButton(onClick = { prefs.lyricY = 160; prefs.lyricLocked = false; lyricLocked = false; DesktopLyrics.configure(context) }) {
                         Text("重置歌词位置并解锁")
                     }
                 }
@@ -189,7 +185,7 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                     EqualizerEngine.labels.forEachIndexed { index, label ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(label, modifier = Modifier.weight(0.25f), style = MaterialTheme.typography.labelMedium)
-                            Slider(value = gains[index], onValueChange = { value ->
+                            AppSlider(value = gains[index], onValueChange = { value ->
                                 gains = gains.toMutableList().also { it[index] = value }
                                 eqPreset = "custom"; prefs.eqPreset = "custom"; prefs.eqCustomBands = gains
                                 EqualizerEngine.apply(prefs)
@@ -201,7 +197,7 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                     }
                     Text("预设可继续微调，自定义曲线会自动保存。", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = {
+                    AppTextButton(onClick = {
                         eqPreset = "custom"; prefs.eqPreset = "custom"
                         gains = List(5) { 0f }; prefs.eqCustomBands = gains; EqualizerEngine.apply(prefs)
                     }) { Text("重置为平直曲线") }
@@ -219,9 +215,9 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                             cacheUsage = usage()
                         }
                     }
-                    Text("播放时自动缓存，超出上限会清理较早使用的音频。封面由图片缓存单独管理。",
+                    Text("播放时自动缓存，超出上限会清理较早使用的音频。歌单封面快照单独保留，最多 96 MB，后台刷新后只替换有变化的封面。",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(enabled = !clearing, onClick = {
+                    AppTextButton(enabled = !clearing, onClick = {
                         scope.launch {
                             clearing = true
                             try {
@@ -229,6 +225,7 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                                     PlaybackCache.clear(context)
                                     context.imageLoader.diskCache?.clear()
                                     context.imageLoader.memoryCache?.clear()
+                                    ArtworkCache.get(context).clear()
                                 }
                                 cacheUsage = usage()
                                 notice = "缓存已清理"
@@ -248,8 +245,8 @@ fun SettingsScreen(user: User?, themeMode: String, onTheme: (String) -> Unit, on
                             Text(user?.roleText ?: "登录后同步收藏与歌单", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (user == null) Button(onClick = onLogin) { Text("登录") }
-                        else TextButton(onClick = onLogout) { Text("退出登录") }
+                        if (user == null) AppButton(onClick = onLogin) { Text("登录") }
+                        else AppTextButton(onClick = onLogout) { Text("退出登录") }
                     }
                 }
             }
@@ -279,7 +276,7 @@ private fun ChoiceRow(choices: List<Pair<String, String>>, selected: String, onS
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(choices.size) { index ->
             val (id, name) = choices[index]
-            FilterChip(selected == id, { onSelect(id) }, label = { Text(name) }, shape = RoundedCornerShape(50))
+            AppChoiceChip(selected == id, { onSelect(id) }, label = { Text(name) }, shape = RoundedCornerShape(50))
         }
     }
 }
@@ -292,6 +289,6 @@ private fun SettingSwitch(title: String, detail: String, checked: Boolean, onCha
             Text(title, style = MaterialTheme.typography.titleSmall)
             if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked, onCheckedChange = null)
+        AppSwitchIndicator(checked)
     }
 }

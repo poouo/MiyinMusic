@@ -24,7 +24,6 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -160,7 +159,7 @@ fun HomeScreen(
                         color = Color.White.copy(alpha = 0.78f),
                         modifier = Modifier.padding(top = 2.dp)
                     )
-                    Button(
+                    AppButton(
                         onClick = { data?.songs?.let { if (it.isNotEmpty()) onPlay(it, 0) } },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White.copy(alpha = 0.18f),
@@ -234,7 +233,7 @@ fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    Button(
+                    AppButton(
                         onClick = onRetry,
                         modifier = Modifier.padding(top = 12.dp),
                         shape = RoundedCornerShape(50)

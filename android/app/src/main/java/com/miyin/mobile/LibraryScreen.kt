@@ -32,7 +32,6 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AddLink
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -131,7 +130,7 @@ fun LibraryScreen(
                 )
             }
             if (user == null) {
-                Button(
+                AppButton(
                     onClick = onLogin,
                     shape = RoundedCornerShape(50),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)

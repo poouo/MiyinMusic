@@ -20,14 +20,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -73,7 +69,8 @@ fun SearchScreen(
     var activePlatform by remember { mutableStateOf("tx") }
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
-    val store = ListeningStore(androidx.compose.ui.platform.LocalContext.current)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = remember(context) { ListeningStore(context) }
     var history by remember { mutableStateOf(store.history) }
 
     DisposableEffect(Unit) { onDispose { version++; searchJob?.cancel() } }
@@ -127,7 +124,7 @@ fun SearchScreen(
             )
         }
 
-        OutlinedTextField(
+        AppField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier
@@ -152,28 +149,26 @@ fun SearchScreen(
         ) {
             items(platforms.size) { index ->
                 val (value, label) = platforms[index]
-                FilterChip(
+                AppChoiceChip(
                     selected = platform == value,
                     onClick = {
                         platform = value
                         if (query.isNotBlank()) search()
                     },
                     label = { Text(label) },
-                    shape = RoundedCornerShape(50),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                        selectedLabelColor = MaterialTheme.colorScheme.primary
-                    )
+                    shape = RoundedCornerShape(14.dp)
                 )
             }
         }
 
         if (result == null && !loading && history.isNotEmpty()) {
             LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(history) { keyword -> TextButton(onClick = { query = keyword; search() }) { Text(keyword) } }
-                item { TextButton(onClick = { history = emptyList(); store.history = emptyList() }) { Text("清空历史") } }
+                items(history) { keyword -> AppTextButton(onClick = { query = keyword; search() }) { Text(keyword) } }
+                item { AppTextButton(onClick = { history = emptyList(); store.history = emptyList() }) { Text("清空历史") } }
             }
         }
+        // Lazy layout callbacks can run after a platform switch clears the state.
+        val snapshot = result
         when {
             loading -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -186,32 +181,32 @@ fun SearchScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(error!!, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = { search() }) { Text("重试") }
+                AppTextButton(onClick = { search() }) { Text("重试") }
             }
 
-            result != null && result!!.list.isEmpty() -> EmptyHint("没有找到相关歌曲，换个关键词试试")
+            snapshot != null && snapshot.list.isEmpty() -> EmptyHint("没有找到相关歌曲，换个关键词试试")
 
-            result != null -> {
+            snapshot != null -> {
                 Text(
-                    "共 " + result!!.total + " 首 · 已加载 " + result!!.list.size + " 首",
+                    "共 " + snapshot.total + " 首 · 已加载 " + snapshot.list.size + " 首",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)
                 )
                 LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
-                    itemsIndexed(result!!.list, key = { _, song -> song.key }) { index, song ->
+                    itemsIndexed(snapshot.list, key = { _, song -> song.key }) { index, song ->
                         SongRow(
                             song = song,
                             index = index,
                             api = api,
                             isFavorite = song.key in favorites,
-                            onPlay = { onPlay(result!!.list, index) },
+                            onPlay = { onPlay(snapshot.list, index) },
                             onFavorite = { onFavorite(song) }
                         )
                     }
-                    if (result!!.hasMore) item {
+                    if (snapshot.hasMore) item {
                         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                            TextButton(onClick = { search(true) }, enabled = !loadingMore) {
+                            AppTextButton(onClick = { search(true) }, enabled = !loadingMore) {
                                 Text(if (loadingMore) "加载中…" else moreError ?: "加载更多")
                             }
                         }

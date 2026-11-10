@@ -19,12 +19,14 @@ val LocalChromePadding = staticCompositionLocalOf { 96.dp }
 
 @Composable
 fun ListEntrance(index: Int = 0, content: @Composable () -> Unit) {
+    // Scrolled-in rows must be readable on their first frame. Only the first
+    // screen gets a brief entrance, with no stagger or transparent frames.
+    if (index >= 4) { content(); return }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
-    val delay = index.coerceIn(0, 6) * 25
-    val progress by animateFloatAsState(if (visible) 1f else 0f, tween(320, delay), label = "list-entrance")
+    val progress by animateFloatAsState(if (visible) 1f else 0f, tween(130), label = "list-entrance")
     Box(Modifier.graphicsLayer {
-        alpha = progress
-        translationY = (1f - progress) * 16.dp.toPx()
+        alpha = .88f + progress * .12f
+        translationY = (1f - progress) * 5.dp.toPx()
     }) { content() }
 }

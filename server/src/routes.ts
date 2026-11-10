@@ -252,6 +252,15 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
     return true
   }
 
+  if (pathname === '/api/sources/order' && method === 'PUT') {
+    const actor = requireAdmin(req)
+    const body = await readJson<{ ids?: unknown }>(req)
+    const sources = sourceManager.reorder(body.ids)
+    writeAudit({ userId: actor.id, username: actor.username, action: 'admin.sources.order', detail: '调整音源优先级：' + sources.map(s => s.id).join(', ') })
+    sendJson(res, 200, { sources })
+    return true
+  }
+
   const sourceMatch = /^\/api\/sources\/([^/]+)(\/reload|\/update)?$/.exec(pathname)
   if (sourceMatch) {
     const id = decodeURIComponent(sourceMatch[1])
