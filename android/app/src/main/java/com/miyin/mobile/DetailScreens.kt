@@ -309,6 +309,8 @@ fun SingerDetailScreen(
     }
     val songs = detail?.songs.orEmpty()
     val info = detail?.singer ?: singer
+    val followId = info.platform + "-" + info.id.removePrefix(info.platform + "-")
+    val followed = actions?.library?.favoriteSingers?.any { it.id == followId } == true
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalChromePadding.current)) {
         item { DetailTopBar(onBack, "歌手详情") }
         item {
@@ -319,24 +321,23 @@ fun SingerDetailScreen(
                     Text(info.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
                     Text("已加载 ${songs.size} 首 · " + (if (detail?.source == "catalog") "歌手作品" else "搜索到的歌曲"), style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    AppTextButton(enabled = !moreBusy, modifier = Modifier.padding(top = 12.dp), onClick = {
+                        if (actions?.requireLogin() == true) {
+                            moreBusy = true
+                            scope.launch {
+                                try {
+                                    val response = if (followed) api.delete<LibraryResponse>("/api/library/singers/$followId")
+                                        else api.post<Map<String, SingerInfo>, LibraryResponse>("/api/library/singers", mapOf("singer" to info))
+                                    actions.update(response.library)
+                                } catch (e: Exception) { actions.message(e.userMessage("关注操作失败")) }
+                                finally { moreBusy = false }
+                            }
+                        }
+                    }) { Text(if (followed) "取消关注" else "关注歌手") }
                 }
             }
         }
         item {
-            AppTextButton(enabled = !moreBusy, onClick = {
-                if (actions?.requireLogin() == true) {
-                    moreBusy = true
-                    scope.launch {
-                        try {
-                            val id = info.platform + "-" + info.id.removePrefix(info.platform + "-")
-                            val response = if (actions.library.favoriteSingers.any { it.id == id }) api.delete<LibraryResponse>("/api/library/singers/$id")
-                                else api.post<Map<String, SingerInfo>, LibraryResponse>("/api/library/singers", mapOf("singer" to info))
-                            actions.update(response.library)
-                        } catch (e: Exception) { actions.message(e.userMessage("关注操作失败")) }
-                        finally { moreBusy = false }
-                    }
-                }
-            }) { Text(if (actions?.library?.favoriteSingers?.any { it.id == info.id } == true) "取消关注" else "关注歌手") }
             AppButton(onClick = { onPlay(songs, 0) }, enabled = songs.isNotEmpty(), modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
